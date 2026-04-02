@@ -90,7 +90,7 @@ def render_kakao_map(data):
     # 핵심: 주소 앞에 https: 를 붙이고, autoload=false를 준 뒤, JS 안에서 프로토콜을 강제함
     map_html = f"""
     <div id="map" style="width:100%;height:400px;border-radius:10px;background-color:#eee;"></div>
-    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_API_KEY}&libraries=services&autoload=false"></script>
+    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_API_KEY}&libraries=services&autoload=false"></script>
     <script>
         (function() {{
             // 브라우저의 프로토콜에 상관없이 https를 강제하는 설정
