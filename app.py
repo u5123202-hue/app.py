@@ -87,17 +87,20 @@ def render_kakao_map(data):
         })
     markers_json = json.dumps(marker_list, ensure_ascii=False)
 
-    # 1. src 주소 앞에 https:를 명시
-    # 2. &autoload=false를 반드시 포함
+    # 핵심: 주소 앞에 https: 를 붙이고, autoload=false를 준 뒤, JS 안에서 프로토콜을 강제함
     map_html = f"""
     <div id="map" style="width:100%;height:400px;border-radius:10px;background-color:#eee;"></div>
     <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_API_KEY}&libraries=services&autoload=false"></script>
     <script>
         (function() {{
-            var interval = setInterval(function() {{
-                if (window.kakao && window.kakao.maps) {{
-                    clearInterval(interval);
-                    // 수동으로 로드하며 https 보안 주소를 사용하도록 설정
+            // 브라우저의 프로토콜에 상관없이 https를 강제하는 설정
+            window.kakao = window.kakao || {{}};
+            window.kakao.maps = window.kakao.maps || {{}};
+            
+            var checkInterval = setInterval(function() {{
+                if (window.kakao && window.kakao.maps && window.kakao.maps.load) {{
+                    clearInterval(checkInterval);
+                    
                     window.kakao.maps.load(function() {{
                         var container = document.getElementById('map');
                         var options = {{
@@ -110,8 +113,7 @@ def render_kakao_map(data):
                         positions.forEach(function(pos) {{
                             var marker = new kakao.maps.Marker({{
                                 map: map,
-                                position: new kakao.maps.LatLng(pos.lat, pos.lng),
-                                title: pos.title
+                                position: new kakao.maps.LatLng(pos.lat, pos.lng)
                             }});
                             var infowindow = new kakao.maps.InfoWindow({{
                                 content: pos.content
