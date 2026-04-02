@@ -77,7 +77,6 @@ def render_kakao_map(data):
     else:
         center_lat, center_lng = data['위도'].mean(), data['경도'].mean()
 
-    # 마커 데이터를 JSON으로 변환
     marker_list = []
     for _, row in data.iterrows():
         marker_list.append({
@@ -88,17 +87,18 @@ def render_kakao_map(data):
         })
     markers_json = json.dumps(marker_list, ensure_ascii=False)
 
-    # 핵심 수정: autoload=false 파라미터 추가
+    # 1. src 주소 앞에 https:를 명시
+    # 2. &autoload=false를 반드시 포함
     map_html = f"""
     <div id="map" style="width:100%;height:400px;border-radius:10px;background-color:#eee;"></div>
     <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_API_KEY}&libraries=services&autoload=false"></script>
     <script>
-        // 카카오 맵 라이브러리가 로드될 때까지 기다림
         (function() {{
-            var checkKakao = setInterval(function() {{
+            var interval = setInterval(function() {{
                 if (window.kakao && window.kakao.maps) {{
-                    clearInterval(checkKakao);
-                    kakao.maps.load(function() {{
+                    clearInterval(interval);
+                    // 수동으로 로드하며 https 보안 주소를 사용하도록 설정
+                    window.kakao.maps.load(function() {{
                         var container = document.getElementById('map');
                         var options = {{
                             center: new kakao.maps.LatLng({center_lat}, {center_lng}),
@@ -125,12 +125,12 @@ def render_kakao_map(data):
                         }});
                     }});
                 }}
-            }}, 100); // 0.1초마다 체크
+            }}, 100);
         }})();
     </script>
     """
     return components.html(map_html, height=420)
-# --- 6. 결과 화면 출력 ---
+    # --- 6. 결과 화면 출력 ---
 st.title("인천대 송도 자취방 추천 🏠")
 
 if not result_df.empty:
