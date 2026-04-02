@@ -135,7 +135,7 @@ st.title("인천대 송도 자취방 추천 🏠")
 
 if not result_df.empty:
     st.subheader("📍 매물 위치 확인")
-    render_kakao_map(result_df.head(10))
+    render_kakao_map(result_df)
 
     st.divider()
     st.subheader("🏆 맞춤형 추천 매물 TOP 3")
