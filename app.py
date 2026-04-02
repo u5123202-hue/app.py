@@ -90,7 +90,7 @@ def render_kakao_map(data):
 
     map_html = f"""
     <div id="map" style="width:100%;height:400px;border-radius:10px;"></div>
-    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_API_KEY}"></script>
+    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_API_KEY}"></script>
     <script>
         var mapContainer = document.getElementById('map'),
             mapOption = {{ 
