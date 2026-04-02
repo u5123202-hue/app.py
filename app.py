@@ -71,6 +71,7 @@ filtered_df['최종점수'] = ((filtered_df['가격점수'] * (w_price / total_w
 result_df = filtered_df.sort_values('최종점수', ascending=False).reset_index(drop=True)
 
 # --- 5. 카카오맵 렌더링 함수 (수정됨) ---
+# --- 5. 카카오맵 렌더링 함수 ---
 def render_kakao_map(data):
     if data.empty:
         center_lat, center_lng = 37.375, 126.632
@@ -87,8 +88,6 @@ def render_kakao_map(data):
         })
     markers_json = json.dumps(marker_list, ensure_ascii=False)
 
-    # 핵심 1: meta 태그를 통해 http 요청을 https로 강제 변환
-    # 핵심 2: sdk.js 주소 앞에 https: 를 명시
     map_html = f"""
     <head>
         <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
@@ -100,7 +99,6 @@ def render_kakao_map(data):
             var checkInterval = setInterval(function() {{
                 if (window.kakao && window.kakao.maps && window.kakao.maps.load) {{
                     clearInterval(checkInterval);
-                    
                     window.kakao.maps.load(function() {{
                         var container = document.getElementById('map');
                         var options = {{
@@ -109,7 +107,6 @@ def render_kakao_map(data):
                         }};
                         var map = new kakao.maps.Map(container, options);
                         var positions = {markers_json};
-
                         positions.forEach(function(pos) {{
                             var marker = new kakao.maps.Marker({{
                                 map: map,
@@ -132,7 +129,8 @@ def render_kakao_map(data):
     </script>
     """
     return components.html(map_html, height=420)
-    # --- 6. 결과 화면 출력 ---
+
+# --- 6. 결과 화면 출력 (함수 밖으로 완전히 나와서 작성) ---
 st.title("인천대 송도 자취방 추천 🏠")
 
 if not result_df.empty:
@@ -147,11 +145,15 @@ if not result_df.empty:
         with top_cols[i]:
             st.metric(label=f"{i + 1}위 추천", value=f"{row['최종점수']} / 10")
             fig = go.Figure()
-            fig.add_trace(go.Scatterpolar(r=[row['가격점수'], row['시설점수'], row['크기점수']], 
-                                          theta=['가격지수', '시설지수', '크기지수'],
-                                          fill='toself', line_color='#00CC96'))
-            fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 10])), 
-                              showlegend=False, height=250, margin=dict(l=40, r=40, t=20, b=20))
+            fig.add_trace(go.Scatterpolar(
+                r=[row['가격점수'], row['시설점수'], row['크기점수']], 
+                theta=['가격지수', '시설지수', '크기지수'],
+                fill='toself', line_color='#00CC96'
+            ))
+            fig.update_layout(
+                polar=dict(radialaxis=dict(visible=True, range=[0, 10])), 
+                showlegend=False, height=250, margin=dict(l=40, r=40, t=20, b=20)
+            )
             st.plotly_chart(fig, use_container_width=True)
             st.info(f"📍 {row['주소']}")
             st.write(f"📏 {row['평수']}평 | 💸 {int(row['보증금']/10000)}/{int(row['월세']/10000)}")
@@ -159,8 +161,12 @@ if not result_df.empty:
 
     st.divider()
     st.subheader("📋 전체 매물 분석 리스트")
-   st.dataframe(result_df[['최종점수', '주소', '종류', '평수', '가격점수', '시설점수', '크기점수', 'url 주소']],
-             column_config={"url 주소": st.column_config.LinkColumn("링크")}, # 중괄호 1개로 수정
-             hide_index=True, use_container_width=True)
+    # 중괄호를 하나만 사용하고 들여쓰기를 맞췄습니다.
+    st.dataframe(
+        result_df[['최종점수', '주소', '종류', '평수', '가격점수', '시설점수', '크기점수', 'url 주소']],
+        column_config={"url 주소": st.column_config.LinkColumn("링크")},
+        hide_index=True, 
+        use_container_width=True
+    )
 else:
     st.warning("조건에 맞는 매물이 없습니다.")
