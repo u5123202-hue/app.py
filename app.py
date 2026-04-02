@@ -90,7 +90,36 @@ def render_kakao_map(data):
 
     map_html = f"""
     <div id="map" style="width:100%;height:400px;border-radius:10px;"></div>
-    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_API_KEY}"></script>
+   # 수정 전
+# <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_API_KEY}"></script>
+
+# 수정 후 (https를 명시하고, 뒤에 &libraries=services 를 붙여주세요)
+map_html = f"""
+<div id="map" style="width:100%;height:400px;border-radius:10px;"></div>
+<script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_API_KEY}&libraries=services"></script>
+<script>
+    // 브라우저가 카카오 객체를 인식할 때까지 안전하게 대기
+    window.onload = function() {{
+        kakao.maps.load(function() {{
+            var mapContainer = document.getElementById('map'),
+                mapOption = {{ 
+                    center: new kakao.maps.LatLng({center_lat}, {center_lng}),
+                    level: 5 
+                }};
+            var map = new kakao.maps.Map(mapContainer, mapOption);
+            var positions = [{markers_js}];
+
+            for (var i = 0; i < positions.length; i ++) {{
+                var marker = new kakao.maps.Marker({{
+                    map: map,
+                    position: positions[i].latlng,
+                    title: positions[i].title
+                }});
+            }}
+        }});
+    }};
+</script>
+"""
     <script>
         var mapContainer = document.getElementById('map'),
             mapOption = {{ 
