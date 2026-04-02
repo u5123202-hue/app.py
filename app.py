@@ -77,53 +77,59 @@ def render_kakao_map(data):
     else:
         center_lat, center_lng = data['위도'].mean(), data['경도'].mean()
 
-    # 마커 데이터를 JSON으로 변환 (JS 에러 방지)
+    # 마커 데이터를 JSON으로 변환
     marker_list = []
     for _, row in data.iterrows():
         marker_list.append({
-            "title": row['주소'],
-            "lat": row['위도'],
-            "lng": row['경도'],
-            "content": f'<div style="padding:5px;font-size:12px;width:150px;">{row["최종점수"]}점 | {row["종류"]}</div>'
+            "title": str(row['주소']),
+            "lat": float(row['위도']),
+            "lng": float(row['경도']),
+            "content": f'<div style="padding:5px;font-size:12px;width:150px;color:black;">{row["최종점수"]}점 | {row["종류"]}</div>'
         })
     markers_json = json.dumps(marker_list, ensure_ascii=False)
 
+    # 핵심 수정: autoload=false 파라미터 추가
     map_html = f"""
-    <div id="map" style="width:100%;height:400px;border-radius:10px;"></div>
-    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_API_KEY}&libraries=services"></script>
+    <div id="map" style="width:100%;height:400px;border-radius:10px;background-color:#eee;"></div>
+    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_API_KEY}&libraries=services&autoload=false"></script>
     <script>
-        window.onload = function() {{
-            kakao.maps.load(function() {{
-                var container = document.getElementById('map');
-                var options = {{
-                    center: new kakao.maps.LatLng({center_lat}, {center_lng}),
-                    level: 5
-                }};
-                var map = new kakao.maps.Map(container, options);
-                var positions = {markers_json};
+        // 카카오 맵 라이브러리가 로드될 때까지 기다림
+        (function() {{
+            var checkKakao = setInterval(function() {{
+                if (window.kakao && window.kakao.maps) {{
+                    clearInterval(checkKakao);
+                    kakao.maps.load(function() {{
+                        var container = document.getElementById('map');
+                        var options = {{
+                            center: new kakao.maps.LatLng({center_lat}, {center_lng}),
+                            level: 5
+                        }};
+                        var map = new kakao.maps.Map(container, options);
+                        var positions = {markers_json};
 
-                positions.forEach(function(pos) {{
-                    var marker = new kakao.maps.Marker({{
-                        map: map,
-                        position: new kakao.maps.LatLng(pos.lat, pos.lng),
-                        title: pos.title
+                        positions.forEach(function(pos) {{
+                            var marker = new kakao.maps.Marker({{
+                                map: map,
+                                position: new kakao.maps.LatLng(pos.lat, pos.lng),
+                                title: pos.title
+                            }});
+                            var infowindow = new kakao.maps.InfoWindow({{
+                                content: pos.content
+                            }});
+                            kakao.maps.event.addListener(marker, 'mouseover', function() {{
+                                infowindow.open(map, marker);
+                            }});
+                            kakao.maps.event.addListener(marker, 'mouseout', function() {{
+                                infowindow.close();
+                            }});
+                        }});
                     }});
-                    var infowindow = new kakao.maps.InfoWindow({{
-                        content: pos.content
-                    }});
-                    kakao.maps.event.addListener(marker, 'mouseover', function() {{
-                        infowindow.open(map, marker);
-                    }});
-                    kakao.maps.event.addListener(marker, 'mouseout', function() {{
-                        infowindow.close();
-                    }});
-                }});
-            }});
-        }};
+                }}
+            }}, 100); // 0.1초마다 체크
+        }})();
     </script>
     """
     return components.html(map_html, height=420)
-
 # --- 6. 결과 화면 출력 ---
 st.title("인천대 송도 자취방 추천 🏠")
 
