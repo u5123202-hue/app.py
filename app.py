@@ -159,8 +159,8 @@ if not result_df.empty:
 
     st.divider()
     st.subheader("📋 전체 매물 분석 리스트")
-    st.dataframe(result_df[['최종점수', '주소', '종류', '평수', '가격점수', '시설점수', '크기점수', 'url 주소']],
-                 column_config={{"url 주소": st.column_config.LinkColumn("링크")}},
-                 hide_index=True, use_container_width=True)
+   st.dataframe(result_df[['최종점수', '주소', '종류', '평수', '가격점수', '시설점수', '크기점수', 'url 주소']],
+             column_config={"url 주소": st.column_config.LinkColumn("링크")}, # 중괄호 1개로 수정
+             hide_index=True, use_container_width=True)
 else:
     st.warning("조건에 맞는 매물이 없습니다.")
