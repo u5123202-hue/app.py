@@ -18,7 +18,7 @@ def load_data():
     try:
         df = pd.read_csv('부동산 매물 정리.csv', encoding='utf-8')
 
-        # 컬럼명 공백 정리
+        # 컬럼명 공백 제거
         df.columns = df.columns.str.strip()
 
         # 필수 컬럼 결측 제거
@@ -26,21 +26,14 @@ def load_data():
         existing_required_cols = [col for col in required_cols if col in df.columns]
         df = df.dropna(subset=existing_required_cols)
 
-        # 일반 숫자 컬럼
-        numeric_cols = ['보증금', '월세', '관리비', '평수', '위도', '경도']
+        # 숫자형 변환
+        numeric_cols = [
+            '보증금', '월세', '관리비', '평수',
+            '위도', '경도',
+            '총_시간(분)', '버스_시간(분)', '지하철_시간(분)'
+        ]
         for col in numeric_cols:
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-
-        # 시간 컬럼: "27분", "35 min" 같은 경우도 숫자만 추출
-        time_cols = ['총_시간(분)', '버스_시간(분)', '지하철_시간(분)']
-        for col in time_cols:
-            if col in df.columns:
-                df[col] = (
-                    df[col]
-                    .astype(str)
-                    .str.extract(r'(\d+\.?\d*)', expand=False)
-                )
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
         # 관리비 없으면 0 처리
@@ -244,14 +237,9 @@ filtered_df['추천태그'] = np.where(
 
 # 시간 표시용 컬럼
 if '총_시간(분)' in filtered_df.columns:
-    filtered_df['총_시간(분)'] = (
-        filtered_df['총_시간(분)']
-        .astype(str)
-        .str.extract(r'(\d+\.?\d*)', expand=False)
-    )
     filtered_df['총_시간(분)'] = pd.to_numeric(filtered_df['총_시간(분)'], errors='coerce')
     filtered_df['학교까지 시간'] = filtered_df['총_시간(분)'].apply(
-        lambda x: f"{int(round(x))}분" if pd.notna(x) else "-"
+        lambda x: f"{int(x)}분" if pd.notna(x) else "-"
     )
 else:
     filtered_df['학교까지 시간'] = "-"
