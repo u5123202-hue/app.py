@@ -282,65 +282,69 @@ if not result_df.empty:
     top_cols = st.columns(3)
 
     for i in range(min(3, len(result_df))):
-        row = result_df.iloc[i]
-        with top_cols[i]:
-            score_color = "#00B36B" if i == 0 else "#31333F"
+    row = result_df.iloc[i]
+    with top_cols[i]:
+        score_color = "#00B36B" if i == 0 else "#31333F"
 
-            tag_html = ""
-            if row['추천태그']:
-                tag_html = f"""
-                <div style="
-                    background-color:#FFF3CD;
-                    color:#856404;
-                    border-radius:8px;
-                    padding:8px 10px;
-                    font-size:13px;
-                    font-weight:bold;
-                    margin-bottom:12px;
-                ">
-                    {row['추천태그']}
-                </div>
-                """
-
-            card_html = f"""
+        tag_html = ""
+        if row['추천태그']:
+            tag_html = f"""
             <div style="
-                background-color: #FFFFFF;
-                border: 1px solid #E6E6E6;
-                border-top: 4px solid #FFC107;
-                border-radius: 15px;
-                padding: 20px;
-                text-align: center;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.05);
-                margin-bottom: 10px;
+                background-color:#FFF3CD;
+                color:#856404;
+                border-radius:8px;
+                padding:8px 10px;
+                font-size:13px;
+                font-weight:bold;
+                margin-bottom:12px;
+                text-align:center;
             ">
-                <div style="color: #FFC107; font-size: 14px; font-weight: bold; margin-bottom: 8px;">
-                    {i + 1}위 추천
-                </div>
-                <div style="color: {score_color}; font-size: 32px; font-weight: 900; margin-bottom: 15px;">
-                    {row['최종점수']} <span style="font-size: 16px; font-weight: normal; color: #888;">/ 10점</span>
-                </div>
-
-                {tag_html}
-
-                <div style="background-color: #F0F2F6; border-radius: 10px; padding: 12px; margin-bottom: 15px;">
-                    <div style="color: #666; font-size: 12px; margin-bottom: 4px;">주소</div>
-                    <div style="color: #31333F; font-size: 15px; word-break: keep-all;">{row['주소']}</div>
-                </div>
-
-                <div style="display: flex; justify-content: space-around; background-color: #F0F2F6; border-radius: 10px; padding: 12px; margin-bottom: 12px;">
-                    <div style="color: #31333F; font-size: 15px;"><b>{row['평수']}</b>평</div>
-                    <div style="color: #31333F; font-size: 15px;"><b>{int(row['보증금'] / 10000)}/{int(row['월세'] / 10000)}</b>만</div>
-                </div>
-
-                <div style="font-size:13px;color:#666;">
-                    월세+관리비: <b>{int(row['월세_관리비_합'] / 10000)}만원</b><br>
-                    예산 초과액: <b>{int(row['예산초과금액'] / 10000)}만원</b>
-                </div>
+                {row['추천태그']}
             </div>
             """
-            st.markdown(card_html, unsafe_allow_html=True)
-            st.link_button("네이버 부동산 상세보기", row['url 주소'], use_container_width=True)
 
+        card_html = f"""
+        <div style="
+            background-color: #FFFFFF;
+            border: 1px solid #E6E6E6;
+            border-top: 4px solid #FFC107;
+            border-radius: 15px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+            margin-bottom: 10px;
+            min-height: 280px;
+            font-family: Arial, sans-serif;
+        ">
+            <div style="color: #FFC107; font-size: 14px; font-weight: bold; margin-bottom: 8px;">
+                {i + 1}위 추천
+            </div>
+
+            <div style="color: {score_color}; font-size: 32px; font-weight: 900; margin-bottom: 15px;">
+                {row['최종점수']} <span style="font-size: 16px; font-weight: normal; color: #888;">/ 10점</span>
+            </div>
+
+            {tag_html}
+
+            <div style="background-color: #F0F2F6; border-radius: 10px; padding: 12px; margin-bottom: 15px;">
+                <div style="color: #666; font-size: 12px; margin-bottom: 4px;">주소</div>
+                <div style="color: #31333F; font-size: 15px; word-break: keep-all;">{row['주소']}</div>
+            </div>
+
+            <div style="display: flex; justify-content: space-around; background-color: #F0F2F6; border-radius: 10px; padding: 12px; margin-bottom: 12px;">
+                <div style="color: #31333F; font-size: 15px;"><b>{row['평수']}</b>평</div>
+                <div style="color: #31333F; font-size: 15px;"><b>{int(row['보증금'] / 10000)}/{int(row['월세'] / 10000)}</b>만</div>
+            </div>
+
+            <div style="font-size:13px; color:#666;">
+                월세+관리비: <b>{int(row['월세_관리비_합'] / 10000)}만원</b><br>
+                예산 초과액: <b>{int(row['예산초과금액'] / 10000)}만원</b>
+            </div>
+        </div>
+        """
+
+        components.html(card_html, height=340)
+        st.link_button("네이버 부동산 상세보기", row['url 주소'], use_container_width=True)
     st.divider()
     st.subheader("전체 매물 분석 리스트")
     st.dataframe(
