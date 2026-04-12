@@ -5,6 +5,7 @@ import streamlit.components.v1 as components
 import json
 import os
 import base64
+import math
 
 # --- 1. 페이지 설정 ---
 st.set_page_config(page_title="ROOMINU", layout="wide")
@@ -17,43 +18,102 @@ KAKAO_API_KEY = "853a71f8261b3dccfd8c6b6e1879d3c4"
 def load_data():
     try:
         df = pd.read_csv('부동산 매물 정리.csv', encoding='utf-8')
-        df = df.dropna(subset=['주소', '보증금', '월세', '평수'])
+
+        # 필수 컬럼 결측 제거
+        required_cols = ['주소', '보증금', '월세', '평수']
+        existing_required_cols = [col for col in required_cols if col in df.columns]
+        df = df.dropna(subset=existing_required_cols)
+
+        # 숫자형 변환
+        numeric_cols = ['보증금', '월세', '관리비', '평수', '위도', '경도', '총_시간(분)', '버스_시간(분)', '지하철_시간(분)']
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
 
         # 관리비 없으면 0 처리
         if '관리비' not in df.columns:
             df['관리비'] = 0
+        df['관리비'] = df['관리비'].fillna(0)
 
-        df['월세_관리비_합'] = df['월세'] + df['관리비']
-        df['실질월세'] = df['월세_관리비_합'] + (df['보증금'] * 0.04 / 12)
-
-        option_cols = ['에어컨', '냉장고', '세탁기', '인덕션', '엘리베이터', '신발장', '옷장', '베란다', '싱크대']
-
-        df['시설점수'] = df.apply(
-            lambda row: (
-                sum(1 for col in option_cols if str(row.get(col)).strip().upper() in ['O', 'ㅇ', '1', '1.0'])
-                / len(option_cols)
-            ) * 10,
-            axis=1
-        )
-
-        min_p, max_p = df['실질월세'].min(), df['실질월세'].max()
-        if max_p == min_p:
-            df['가격점수'] = 10
+        # 좌표 없으면 기본값
+        if '위도' not in df.columns:
+            df['위도'] = 37.375
         else:
-            df['가격점수'] = 10 - ((df['실질월세'] - min_p) / (max_p - min_p) * 10)
+            df['위도'] = df['위도'].fillna(37.375)
 
+        if '경도' not in df.columns:
+            df['경도'] = 126.632
+        else:
+            df['경도'] = df['경도'].fillna(126.632)
+
+        # 방향 없으면 빈 문자열
+        if '향' not in df.columns:
+            df['향'] = ''
+        df['향'] = df['향'].fillna('')
+
+        # 종류 없으면 기타
+        if '종류' not in df.columns:
+            df['종류'] = '기타'
+        df['종류'] = df['종류'].fillna('기타')
+
+        # URL 없으면 빈 문자열
+        if 'url 주소' not in df.columns:
+            df['url 주소'] = ''
+        df['url 주소'] = df['url 주소'].fillna('')
+
+        # 가격 관련 파생 변수
+        df['월세_관리비_합'] = df['월세'].fillna(0) + df['관리비'].fillna(0)
+        df['실질월세'] = df['월세_관리비_합'] + (df['보증금'].fillna(0) * 0.04 / 12)
+
+        # 옵션 컬럼
+        option_cols = ['에어컨', '냉장고', '세탁기', '인덕션', '엘리베이터', '신발장', '옷장', '베란다', '싱크대']
+        existing_option_cols = [col for col in option_cols if col in df.columns]
+
+        if len(existing_option_cols) > 0:
+            df['시설점수'] = df.apply(
+                lambda row: (
+                    sum(
+                        1 for col in existing_option_cols
+                        if str(row.get(col)).strip().upper() in ['O', 'ㅇ', '1', '1.0']
+                    ) / len(existing_option_cols)
+                ) * 10,
+                axis=1
+            )
+        else:
+            df['시설점수'] = 5.0
+
+        # 가격점수
+        min_p = df['실질월세'].min()
+        max_p = df['실질월세'].max()
+        if pd.notna(min_p) and pd.notna(max_p) and max_p != min_p:
+            df['가격점수'] = 10 - ((df['실질월세'] - min_p) / (max_p - min_p) * 10)
+        else:
+            df['가격점수'] = 5.0
+
+        # 크기점수
         target_max_size = 25.0
         min_s = df['평수'].min()
-        if target_max_size == min_s:
-            df['크기점수'] = 10
-        else:
+        if pd.notna(min_s) and target_max_size != min_s:
             df['크기점수'] = ((df['평수'].clip(upper=target_max_size) - min_s) / (target_max_size - min_s) * 10)
+            df['크기점수'] = df['크기점수'].clip(lower=0, upper=10)
+        else:
+            df['크기점수'] = 5.0
 
-        if '위도' not in df.columns or '경도' not in df.columns:
-            df['위도'] = 37.375
-            df['경도'] = 126.632
+        # 통학점수: 총_시간(분) 짧을수록 높게
+        if '총_시간(분)' in df.columns:
+            min_t = df['총_시간(분)'].min()
+            max_t = df['총_시간(분)'].max()
 
-        return df, option_cols
+            if pd.notna(min_t) and pd.notna(max_t) and max_t != min_t:
+                df['통학점수'] = 10 - ((df['총_시간(분)'] - min_t) / (max_t - min_t) * 10)
+                df['통학점수'] = df['통학점수'].clip(lower=0, upper=10)
+            else:
+                df['통학점수'] = 5.0
+        else:
+            df['총_시간(분)'] = np.nan
+            df['통학점수'] = 5.0
+
+        return df, existing_option_cols
 
     except Exception as e:
         st.error(f"데이터 로드 에러: {e}")
@@ -68,12 +128,12 @@ st.sidebar.header("검색 필터")
 
 selected_types = st.sidebar.multiselect(
     "매물 종류",
-    df['종류'].dropna().unique(),
-    default=df['종류'].dropna().unique()
+    options=df['종류'].dropna().unique(),
+    default=list(df['종류'].dropna().unique())
 )
 
 with st.sidebar.expander("예산 및 가격 설정", expanded=False):
-    max_deposit_val = int(df['보증금'].max() / 10000)
+    max_deposit_val = int(df['보증금'].max() / 10000) if pd.notna(df['보증금'].max()) else 100
     max_deposit_val = max(max_deposit_val, 100)
 
     max_deposit = st.slider("최대 보증금 (만원)", 0, max_deposit_val, max_deposit_val, step=100)
@@ -87,12 +147,15 @@ with st.sidebar.expander("필수 옵션 선택", expanded=False):
             selected_options.append(opt)
 
 with st.sidebar.expander("방향 설정", expanded=False):
-    available_directions = [d for d in df['향'].dropna().unique() if str(d).strip() != 'nan']
-    selected_directions = st.multiselect(
-        "원하는 방향을 선택하세요 (여러 개 선택 가능)",
-        options=available_directions,
-        default=available_directions
-    )
+    available_directions = [d for d in df['향'].dropna().unique() if str(d).strip() != '' and str(d).strip().lower() != 'nan']
+    if available_directions:
+        selected_directions = st.multiselect(
+            "원하는 방향을 선택하세요 (여러 개 선택 가능)",
+            options=available_directions,
+            default=available_directions
+        )
+    else:
+        selected_directions = []
 
 st.sidebar.divider()
 
@@ -101,8 +164,8 @@ with st.sidebar.expander("항목별 중요도 설정", expanded=False):
     w_price = st.slider("가격 중요도", 0, 10, 5)
     w_option = st.slider("시설 중요도", 0, 10, 5)
     w_size = st.slider("크기 중요도", 0, 10, 5)
+    w_commute = st.slider("통학 중요도", 0, 10, 5)
 
-# 가격 초과 패널티 강도
 with st.sidebar.expander("예산 초과 패널티 설정", expanded=False):
     over_budget_penalty_weight = st.slider(
         "예산 초과 패널티 강도",
@@ -114,48 +177,49 @@ with st.sidebar.expander("예산 초과 패널티 설정", expanded=False):
     )
 
 # --- 4. 필터링 및 계산 ---
-# Step 1: 예산의 1.2배까지 1차 필터링
 budget_limit = max_budget * 10000
 extended_budget_limit = budget_limit * 1.2
 
-filtered_df = df[
-    (df['종류'].isin(selected_types)) &
-    (df['월세_관리비_합'] <= extended_budget_limit) &
-    (df['보증금'] <= max_deposit * 10000) &
-    (df['향'].isin(selected_directions))
+filtered_df = df.copy()
+
+if selected_types:
+    filtered_df = filtered_df[filtered_df['종류'].isin(selected_types)]
+
+filtered_df = filtered_df[
+    (filtered_df['월세_관리비_합'] <= extended_budget_limit) &
+    (filtered_df['보증금'] <= max_deposit * 10000)
 ].copy()
 
-for opt in selected_options:
-    filtered_df = filtered_df[
-        filtered_df[opt].astype(str).str.strip().str.upper().isin(['1', '1.0', 'O', 'ㅇ'])
-    ]
+if selected_directions:
+    filtered_df = filtered_df[filtered_df['향'].isin(selected_directions)].copy()
 
-# Step 2: 기본 점수 계산 + 예산 초과 패널티
-total_w = w_price + w_option + w_size
+for opt in selected_options:
+    if opt in filtered_df.columns:
+        filtered_df = filtered_df[
+            filtered_df[opt].astype(str).str.strip().str.upper().isin(['1', '1.0', 'O', 'ㅇ'])
+        ]
+
+total_w = w_price + w_option + w_size + w_commute
 
 if total_w > 0:
     filtered_df['기본점수'] = (
         (filtered_df['가격점수'] * (w_price / total_w)) +
         (filtered_df['시설점수'] * (w_option / total_w)) +
-        (filtered_df['크기점수'] * (w_size / total_w))
+        (filtered_df['크기점수'] * (w_size / total_w)) +
+        (filtered_df['통학점수'] * (w_commute / total_w))
     )
 else:
     filtered_df['기본점수'] = 0.0
 
-# 예산 초과 금액 계산 (월세+관리비 기준)
+# 예산 초과 금액
 filtered_df['예산초과금액'] = (filtered_df['월세_관리비_합'] - budget_limit).clip(lower=0)
 
-# 패널티를 점수 단위로 환산
 # 10만원 초과당 penalty_weight 점 차감
 filtered_df['예산패널티'] = (filtered_df['예산초과금액'] / 100000) * over_budget_penalty_weight
 
-# 최종 점수
 filtered_df['최종점수'] = (filtered_df['기본점수'] - filtered_df['예산패널티']).round(1)
+filtered_df['최종점수'] = filtered_df['최종점수'].clip(lower=0, upper=10)
 
-# 점수 범위 보정
-filtered_df['최종점수'] = filtered_df['최종점수'].clip(lower=0)
-
-# Step 3: 예산 초과지만 상위권이면 태그 부여
 filtered_df['추천태그'] = np.where(
     filtered_df['예산초과금액'] > 0,
     "예산을 조금 넘지만 조건이 매우 좋아요!",
@@ -169,22 +233,28 @@ def render_kakao_map(data):
     if data.empty:
         center_lat, center_lng = 37.375, 126.632
     else:
-        center_lat, center_lng = data['위도'].mean(), data['경도'].mean()
+        center_lat = data['위도'].mean()
+        center_lng = data['경도'].mean()
 
     marker_list = []
     for _, row in data.iterrows():
         extra_tag = ""
-        if row.get("추천태그", ""):
+        if pd.notna(row.get("추천태그", "")) and str(row.get("추천태그", "")).strip() != "":
             extra_tag = f"<br><span style='color:#ff6600;font-weight:bold;'>{row['추천태그']}</span>"
+
+        total_time_text = "-"
+        if pd.notna(row.get("총_시간(분)", np.nan)):
+            total_time_text = f"{int(row['총_시간(분)'])}분"
 
         marker_list.append({
             "title": str(row['주소']),
             "lat": float(row['위도']),
             "lng": float(row['경도']),
             "content": f"""
-                <div style="padding:5px;font-size:12px;width:180px;color:black;">
+                <div style="padding:5px;font-size:12px;width:200px;color:black;">
                     <b>{row["최종점수"]}점</b> | {row["종류"]}
                     <br>월세+관리비: {int(row["월세_관리비_합"] / 10000)}만원
+                    <br>학교까지: {total_time_text}
                     {extra_tag}
                 </div>
             """
@@ -281,78 +351,102 @@ if not result_df.empty:
     st.subheader("맞춤형 추천 매물 TOP 3")
     top_cols = st.columns(3)
 
-for i in range(min(3, len(result_df))):
-    row = result_df.iloc[i]
-    with top_cols[i]:
-        score_color = "#00B36B" if i == 0 else "#31333F"
+    for i in range(min(3, len(result_df))):
+        row = result_df.iloc[i]
 
-        tag_html = ""
-        if row['추천태그']:
-            tag_html = f"""
+        with top_cols[i]:
+            score_color = "#00B36B" if i == 0 else "#31333F"
+
+            tag_html = ""
+            if pd.notna(row['추천태그']) and str(row['추천태그']).strip() != "":
+                tag_html = f"""
+                <div style="
+                    background-color:#FFF3CD;
+                    color:#856404;
+                    border-radius:8px;
+                    padding:8px 10px;
+                    font-size:13px;
+                    font-weight:bold;
+                    margin-bottom:12px;
+                    text-align:center;
+                ">
+                    {row['추천태그']}
+                </div>
+                """
+
+            total_time_text = "-"
+            if pd.notna(row['총_시간(분)']):
+                total_time_text = f"{int(row['총_시간(분)'])}분"
+
+            card_html = f"""
             <div style="
-                background-color:#FFF3CD;
-                color:#856404;
-                border-radius:8px;
-                padding:8px 10px;
-                font-size:13px;
-                font-weight:bold;
-                margin-bottom:12px;
-                text-align:center;
+                background-color: #FFFFFF;
+                border: 1px solid #E6E6E6;
+                border-top: 4px solid #FFC107;
+                border-radius: 15px;
+                padding: 20px;
+                text-align: center;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+                margin-bottom: 10px;
+                min-height: 320px;
+                font-family: Arial, sans-serif;
             ">
-                {row['추천태그']}
+                <div style="color: #FFC107; font-size: 14px; font-weight: bold; margin-bottom: 8px;">
+                    {i + 1}위 추천
+                </div>
+
+                <div style="color: {score_color}; font-size: 32px; font-weight: 900; margin-bottom: 15px;">
+                    {row['최종점수']} <span style="font-size: 16px; font-weight: normal; color: #888;">/ 10점</span>
+                </div>
+
+                {tag_html}
+
+                <div style="background-color: #F0F2F6; border-radius: 10px; padding: 12px; margin-bottom: 15px;">
+                    <div style="color: #666; font-size: 12px; margin-bottom: 4px;">주소</div>
+                    <div style="color: #31333F; font-size: 15px; word-break: keep-all;">{row['주소']}</div>
+                </div>
+
+                <div style="display: flex; justify-content: space-around; background-color: #F0F2F6; border-radius: 10px; padding: 12px; margin-bottom: 12px;">
+                    <div style="color: #31333F; font-size: 15px;"><b>{row['평수']}</b>평</div>
+                    <div style="color: #31333F; font-size: 15px;"><b>{int(row['보증금'] / 10000)}/{int(row['월세'] / 10000)}</b>만</div>
+                </div>
+
+                <div style="font-size:13px; color:#666;">
+                    월세+관리비: <b>{int(row['월세_관리비_합'] / 10000)}만원</b><br>
+                    예산 초과액: <b>{int(row['예산초과금액'] / 10000)}만원</b><br>
+                    학교까지 총 시간: <b>{total_time_text}</b>
+                </div>
             </div>
             """
 
-        card_html = f"""
-        <div style="
-            background-color: #FFFFFF;
-            border: 1px solid #E6E6E6;
-            border-top: 4px solid #FFC107;
-            border-radius: 15px;
-            padding: 20px;
-            text-align: center;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
-            margin-bottom: 10px;
-            min-height: 280px;
-            font-family: Arial, sans-serif;
-        ">
-            <div style="color: #FFC107; font-size: 14px; font-weight: bold; margin-bottom: 8px;">
-                {i + 1}위 추천
-            </div>
+            components.html(card_html, height=360)
 
-            <div style="color: {score_color}; font-size: 32px; font-weight: 900; margin-bottom: 15px;">
-                {row['최종점수']} <span style="font-size: 16px; font-weight: normal; color: #888;">/ 10점</span>
-            </div>
+            if str(row['url 주소']).strip() != "":
+                st.link_button("네이버 부동산 상세보기", row['url 주소'], use_container_width=True)
 
-            {tag_html}
-
-            <div style="background-color: #F0F2F6; border-radius: 10px; padding: 12px; margin-bottom: 15px;">
-                <div style="color: #666; font-size: 12px; margin-bottom: 4px;">주소</div>
-                <div style="color: #31333F; font-size: 15px; word-break: keep-all;">{row['주소']}</div>
-            </div>
-
-            <div style="display: flex; justify-content: space-around; background-color: #F0F2F6; border-radius: 10px; padding: 12px; margin-bottom: 12px;">
-                <div style="color: #31333F; font-size: 15px;"><b>{row['평수']}</b>평</div>
-                <div style="color: #31333F; font-size: 15px;"><b>{int(row['보증금'] / 10000)}/{int(row['월세'] / 10000)}</b>만</div>
-            </div>
-
-            <div style="font-size:13px; color:#666;">
-                월세+관리비: <b>{int(row['월세_관리비_합'] / 10000)}만원</b><br>
-                예산 초과액: <b>{int(row['예산초과금액'] / 10000)}만원</b>
-            </div>
-        </div>
-        """
-
-        components.html(card_html, height=340)
-        st.link_button("네이버 부동산 상세보기", row['url 주소'], use_container_width=True)
     st.divider()
     st.subheader("전체 매물 분석 리스트")
+
+    display_cols = [
+        '최종점수', '추천태그', '주소', '종류', '평수',
+        '총_시간(분)', '통학점수',
+        '월세_관리비_합', '예산초과금액',
+        '가격점수', '시설점수', '크기점수', 'url 주소'
+    ]
+    display_cols = [col for col in display_cols if col in result_df.columns]
+
     st.dataframe(
-        result_df[['최종점수', '추천태그', '주소', '종류', '평수', '월세_관리비_합', '예산초과금액', '가격점수', '시설점수', '크기점수', 'url 주소']],
+        result_df[display_cols],
         column_config={
             "url 주소": st.column_config.LinkColumn("링크"),
             "월세_관리비_합": st.column_config.NumberColumn("월세+관리비", format="%d"),
             "예산초과금액": st.column_config.NumberColumn("예산초과금액", format="%d"),
+            "총_시간(분)": st.column_config.NumberColumn("학교까지 총 시간(분)", format="%d"),
+            "통학점수": st.column_config.NumberColumn("통학점수", format="%.1f"),
+            "가격점수": st.column_config.NumberColumn("가격점수", format="%.1f"),
+            "시설점수": st.column_config.NumberColumn("시설점수", format="%.1f"),
+            "크기점수": st.column_config.NumberColumn("크기점수", format="%.1f"),
+            "최종점수": st.column_config.NumberColumn("최종점수", format="%.1f"),
         },
         hide_index=True,
         use_container_width=True
