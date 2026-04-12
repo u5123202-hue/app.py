@@ -12,40 +12,52 @@ st.set_page_config(page_title="ROOMINU", layout="wide")
 # --- KAKAO MAP API KEY 설정 ---
 KAKAO_API_KEY = "853a71f8261b3dccfd8c6b6e1879d3c4"
 
-
 # --- 2. 데이터 로드 및 전처리 ---
 @st.cache_data
 def load_data():
     try:
         df = pd.read_csv('부동산 매물 정리.csv', encoding='utf-8')
-        df = df.dropna(subset=['주소', '보증금'])
+        df = df.dropna(subset=['주소', '보증금', '월세', '평수'])
 
-        df['월세_관리비_합'] = df['월세'] + df.get('관리비', 0)
+        # 관리비 없으면 0 처리
+        if '관리비' not in df.columns:
+            df['관리비'] = 0
+
+        df['월세_관리비_합'] = df['월세'] + df['관리비']
         df['실질월세'] = df['월세_관리비_합'] + (df['보증금'] * 0.04 / 12)
 
         option_cols = ['에어컨', '냉장고', '세탁기', '인덕션', '엘리베이터', '신발장', '옷장', '베란다', '싱크대']
 
         df['시설점수'] = df.apply(
-            lambda row: (sum(
-                1 for col in option_cols if str(row.get(col)).strip().upper() in ['O', 'ㅇ', '1', '1.0']) / len(
-                option_cols)) * 10, axis=1)
+            lambda row: (
+                sum(1 for col in option_cols if str(row.get(col)).strip().upper() in ['O', 'ㅇ', '1', '1.0'])
+                / len(option_cols)
+            ) * 10,
+            axis=1
+        )
 
         min_p, max_p = df['실질월세'].min(), df['실질월세'].max()
-        df['가격점수'] = 10 - ((df['실질월세'] - min_p) / (max_p - min_p) * 10)
+        if max_p == min_p:
+            df['가격점수'] = 10
+        else:
+            df['가격점수'] = 10 - ((df['실질월세'] - min_p) / (max_p - min_p) * 10)
 
         target_max_size = 25.0
         min_s = df['평수'].min()
-        df['크기점수'] = ((df['평수'].clip(upper=target_max_size) - min_s) / (target_max_size - min_s) * 10)
+        if target_max_size == min_s:
+            df['크기점수'] = 10
+        else:
+            df['크기점수'] = ((df['평수'].clip(upper=target_max_size) - min_s) / (target_max_size - min_s) * 10)
 
         if '위도' not in df.columns or '경도' not in df.columns:
             df['위도'] = 37.375
             df['경도'] = 126.632
 
         return df, option_cols
+
     except Exception as e:
         st.error(f"데이터 로드 에러: {e}")
         return pd.DataFrame(), []
-
 
 df, option_cols = load_data()
 if df.empty:
@@ -53,13 +65,19 @@ if df.empty:
 
 # --- 3. 사이드바 ---
 st.sidebar.header("검색 필터")
-selected_types = st.sidebar.multiselect("매물 종류", df['종류'].unique(), default=df['종류'].unique())
+
+selected_types = st.sidebar.multiselect(
+    "매물 종류",
+    df['종류'].dropna().unique(),
+    default=df['종류'].dropna().unique()
+)
 
 with st.sidebar.expander("예산 및 가격 설정", expanded=False):
     max_deposit_val = int(df['보증금'].max() / 10000)
     max_deposit_val = max(max_deposit_val, 100)
+
     max_deposit = st.slider("최대 보증금 (만원)", 0, max_deposit_val, max_deposit_val, step=100)
-    max_budget = st.slider("최대 예산 (월세+관리비, 만원)", 0, 150, 70, step=5)
+    max_budget = st.slider("희망 월세+관리비 예산 (만원)", 0, 150, 70, step=5)
 
 with st.sidebar.expander("필수 옵션 선택", expanded=False):
     st.write("선택한 옵션이 모두 있는 매물만 보여줍니다.")
@@ -69,7 +87,7 @@ with st.sidebar.expander("필수 옵션 선택", expanded=False):
             selected_options.append(opt)
 
 with st.sidebar.expander("방향 설정", expanded=False):
-    available_directions = [d for d in df['향'].unique() if str(d).strip() != 'nan']
+    available_directions = [d for d in df['향'].dropna().unique() if str(d).strip() != 'nan']
     selected_directions = st.multiselect(
         "원하는 방향을 선택하세요 (여러 개 선택 가능)",
         options=available_directions,
@@ -80,31 +98,71 @@ st.sidebar.divider()
 
 with st.sidebar.expander("항목별 중요도 설정", expanded=False):
     st.write("각 항목이 점수에 미치는 영향력을 조절하세요.")
-    w_price = st.slider("가격 중요도", 1, 10, 5)
-    w_option = st.slider("시설 중요도", 1, 10, 5)
-    w_size = st.slider("크기 중요도", 1, 10, 5)
+    w_price = st.slider("가격 중요도", 0, 10, 5)
+    w_option = st.slider("시설 중요도", 0, 10, 5)
+    w_size = st.slider("크기 중요도", 0, 10, 5)
+
+# 가격 초과 패널티 강도
+with st.sidebar.expander("예산 초과 패널티 설정", expanded=False):
+    over_budget_penalty_weight = st.slider(
+        "예산 초과 패널티 강도",
+        min_value=0.0,
+        max_value=5.0,
+        value=1.0,
+        step=0.1,
+        help="예산을 초과한 금액이 최종 점수에서 얼마나 크게 차감될지 조절합니다."
+    )
 
 # --- 4. 필터링 및 계산 ---
+# Step 1: 예산의 1.2배까지 1차 필터링
+budget_limit = max_budget * 10000
+extended_budget_limit = budget_limit * 1.2
+
 filtered_df = df[
     (df['종류'].isin(selected_types)) &
-    (df['월세_관리비_합'] <= max_budget * 10000) &
+    (df['월세_관리비_합'] <= extended_budget_limit) &
     (df['보증금'] <= max_deposit * 10000) &
     (df['향'].isin(selected_directions))
-    ].copy()
+].copy()
 
 for opt in selected_options:
-    filtered_df = filtered_df[filtered_df[opt].astype(str).str.strip().str.upper().isin(['1', '1.0', 'O', 'ㅇ'])]
+    filtered_df = filtered_df[
+        filtered_df[opt].astype(str).str.strip().str.upper().isin(['1', '1.0', 'O', 'ㅇ'])
+    ]
 
+# Step 2: 기본 점수 계산 + 예산 초과 패널티
 total_w = w_price + w_option + w_size
+
 if total_w > 0:
-    filtered_df['최종점수'] = ((filtered_df['가격점수'] * (w_price / total_w)) +
-                           (filtered_df['시설점수'] * (w_option / total_w)) +
-                           (filtered_df['크기점수'] * (w_size / total_w))).round(1)
+    filtered_df['기본점수'] = (
+        (filtered_df['가격점수'] * (w_price / total_w)) +
+        (filtered_df['시설점수'] * (w_option / total_w)) +
+        (filtered_df['크기점수'] * (w_size / total_w))
+    )
 else:
-    filtered_df['최종점수'] = 0.0
+    filtered_df['기본점수'] = 0.0
+
+# 예산 초과 금액 계산 (월세+관리비 기준)
+filtered_df['예산초과금액'] = (filtered_df['월세_관리비_합'] - budget_limit).clip(lower=0)
+
+# 패널티를 점수 단위로 환산
+# 10만원 초과당 penalty_weight 점 차감
+filtered_df['예산패널티'] = (filtered_df['예산초과금액'] / 100000) * over_budget_penalty_weight
+
+# 최종 점수
+filtered_df['최종점수'] = (filtered_df['기본점수'] - filtered_df['예산패널티']).round(1)
+
+# 점수 범위 보정
+filtered_df['최종점수'] = filtered_df['최종점수'].clip(lower=0)
+
+# Step 3: 예산 초과지만 상위권이면 태그 부여
+filtered_df['추천태그'] = np.where(
+    filtered_df['예산초과금액'] > 0,
+    "예산을 조금 넘지만 조건이 매우 좋아요!",
+    ""
+)
 
 result_df = filtered_df.sort_values('최종점수', ascending=False).reset_index(drop=True)
-
 
 # --- 5. 카카오맵 렌더링 함수 ---
 def render_kakao_map(data):
@@ -115,12 +173,23 @@ def render_kakao_map(data):
 
     marker_list = []
     for _, row in data.iterrows():
+        extra_tag = ""
+        if row.get("추천태그", ""):
+            extra_tag = f"<br><span style='color:#ff6600;font-weight:bold;'>{row['추천태그']}</span>"
+
         marker_list.append({
             "title": str(row['주소']),
             "lat": float(row['위도']),
             "lng": float(row['경도']),
-            "content": f'<div style="padding:5px;font-size:12px;width:150px;color:black;">{row["최종점수"]}점 | {row["종류"]}</div>'
+            "content": f"""
+                <div style="padding:5px;font-size:12px;width:180px;color:black;">
+                    <b>{row["최종점수"]}점</b> | {row["종류"]}
+                    <br>월세+관리비: {int(row["월세_관리비_합"] / 10000)}만원
+                    {extra_tag}
+                </div>
+            """
         })
+
     markers_json = json.dumps(marker_list, ensure_ascii=False)
 
     map_html = f"""
@@ -142,14 +211,17 @@ def render_kakao_map(data):
                         }};
                         var map = new kakao.maps.Map(container, options);
                         var positions = {markers_json};
+
                         positions.forEach(function(pos) {{
                             var marker = new kakao.maps.Marker({{
                                 map: map,
                                 position: new kakao.maps.LatLng(pos.lat, pos.lng)
                             }});
+
                             var infowindow = new kakao.maps.InfoWindow({{
                                 content: pos.content
                             }});
+
                             kakao.maps.event.addListener(marker, 'mouseover', function() {{
                                 infowindow.open(map, marker);
                             }});
@@ -165,24 +237,20 @@ def render_kakao_map(data):
     """
     return components.html(map_html, height=420)
 
-
-# --- 🌟 이미지 Base64 인코딩 함수 (빠르고 안전한 방식) ---
+# --- 이미지 Base64 인코딩 함수 ---
 def get_image_base64(image_path):
     if not os.path.exists(image_path):
         return ""
-    # 이미 투명하게 준비된 파일을 그대로 읽어옵니다.
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
 
-
-# 준비한 투명 이미지 파일명
 LOGO_FILE_PATH = "logo_transparent.png"
 logo_base64 = get_image_base64(LOGO_FILE_PATH)
 
 # --- 6. 결과 화면 출력 ---
 header_html = f"""
 <div style="
-    background: linear-gradient(90deg, #1E90FF, #00BFFF); 
+    background: linear-gradient(90deg, #1E90FF, #00BFFF);
     padding: 20px 30px;
     border-radius: 15px;
     color: white;
@@ -218,15 +286,31 @@ if not result_df.empty:
         with top_cols[i]:
             score_color = "#00B36B" if i == 0 else "#31333F"
 
+            tag_html = ""
+            if row['추천태그']:
+                tag_html = f"""
+                <div style="
+                    background-color:#FFF3CD;
+                    color:#856404;
+                    border-radius:8px;
+                    padding:8px 10px;
+                    font-size:13px;
+                    font-weight:bold;
+                    margin-bottom:12px;
+                ">
+                    {row['추천태그']}
+                </div>
+                """
+
             card_html = f"""
             <div style="
-                background-color: #FFFFFF; 
-                border: 1px solid #E6E6E6; 
-                border-top: 4px solid #FFC107; 
-                border-radius: 15px; 
-                padding: 20px; 
-                text-align: center; 
-                box-shadow: 0 4px 8px rgba(0,0,0,0.05); 
+                background-color: #FFFFFF;
+                border: 1px solid #E6E6E6;
+                border-top: 4px solid #FFC107;
+                border-radius: 15px;
+                padding: 20px;
+                text-align: center;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.05);
                 margin-bottom: 10px;
             ">
                 <div style="color: #FFC107; font-size: 14px; font-weight: bold; margin-bottom: 8px;">
@@ -235,13 +319,22 @@ if not result_df.empty:
                 <div style="color: {score_color}; font-size: 32px; font-weight: 900; margin-bottom: 15px;">
                     {row['최종점수']} <span style="font-size: 16px; font-weight: normal; color: #888;">/ 10점</span>
                 </div>
+
+                {tag_html}
+
                 <div style="background-color: #F0F2F6; border-radius: 10px; padding: 12px; margin-bottom: 15px;">
                     <div style="color: #666; font-size: 12px; margin-bottom: 4px;">주소</div>
                     <div style="color: #31333F; font-size: 15px; word-break: keep-all;">{row['주소']}</div>
                 </div>
-                <div style="display: flex; justify-content: space-around; background-color: #F0F2F6; border-radius: 10px; padding: 12px;">
+
+                <div style="display: flex; justify-content: space-around; background-color: #F0F2F6; border-radius: 10px; padding: 12px; margin-bottom: 12px;">
                     <div style="color: #31333F; font-size: 15px;"><b>{row['평수']}</b>평</div>
                     <div style="color: #31333F; font-size: 15px;"><b>{int(row['보증금'] / 10000)}/{int(row['월세'] / 10000)}</b>만</div>
+                </div>
+
+                <div style="font-size:13px;color:#666;">
+                    월세+관리비: <b>{int(row['월세_관리비_합'] / 10000)}만원</b><br>
+                    예산 초과액: <b>{int(row['예산초과금액'] / 10000)}만원</b>
                 </div>
             </div>
             """
@@ -251,8 +344,12 @@ if not result_df.empty:
     st.divider()
     st.subheader("전체 매물 분석 리스트")
     st.dataframe(
-        result_df[['최종점수', '주소', '종류', '평수', '가격점수', '시설점수', '크기점수', 'url 주소']],
-        column_config={"url 주소": st.column_config.LinkColumn("링크")},
+        result_df[['최종점수', '추천태그', '주소', '종류', '평수', '월세_관리비_합', '예산초과금액', '가격점수', '시설점수', '크기점수', 'url 주소']],
+        column_config={
+            "url 주소": st.column_config.LinkColumn("링크"),
+            "월세_관리비_합": st.column_config.NumberColumn("월세+관리비", format="%d"),
+            "예산초과금액": st.column_config.NumberColumn("예산초과금액", format="%d"),
+        },
         hide_index=True,
         use_container_width=True
     )
