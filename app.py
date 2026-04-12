@@ -281,7 +281,7 @@ if not result_df.empty:
     st.subheader("맞춤형 추천 매물 TOP 3")
     top_cols = st.columns(3)
 
-    for i in range(min(3, len(result_df))):
+for i in range(min(3, len(result_df))):
     row = result_df.iloc[i]
     with top_cols[i]:
         score_color = "#00B36B" if i == 0 else "#31333F"
