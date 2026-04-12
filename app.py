@@ -6,42 +6,29 @@ import json
 import os
 import base64
 
-# --- 1. 페이지 설정 ---
 st.set_page_config(page_title="ROOMINU", layout="wide")
 
-# --- KAKAO MAP API KEY 설정 ---
 KAKAO_API_KEY = "853a71f8261b3dccfd8c6b6e1879d3c4"
 
-# --- 2. 데이터 로드 및 전처리 ---
 @st.cache_data
 def load_data():
     try:
         df = pd.read_csv('부동산 매물 정리.csv', encoding='utf-8')
-
-        # 컬럼명 공백 제거
         df.columns = df.columns.str.strip()
 
-        # 필수 컬럼 결측 제거
         required_cols = ['주소', '보증금', '월세', '평수']
         existing_required_cols = [col for col in required_cols if col in df.columns]
         df = df.dropna(subset=existing_required_cols)
 
-        # 숫자형 변환
-        numeric_cols = [
-            '보증금', '월세', '관리비', '평수',
-            '위도', '경도',
-            '총_시간(분)', '버스_시간(분)', '지하철_시간(분)'
-        ]
+        numeric_cols = ['보증금', '월세', '관리비', '평수', '위도', '경도', '총_시간(분)']
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
-        # 관리비 없으면 0 처리
         if '관리비' not in df.columns:
             df['관리비'] = 0
         df['관리비'] = df['관리비'].fillna(0)
 
-        # 좌표 기본값
         if '위도' not in df.columns:
             df['위도'] = 37.375
         else:
@@ -52,7 +39,6 @@ def load_data():
         else:
             df['경도'] = df['경도'].fillna(126.632)
 
-        # 방향 / 종류 / URL 기본 처리
         if '향' not in df.columns:
             df['향'] = ''
         df['향'] = df['향'].fillna('')
@@ -65,11 +51,9 @@ def load_data():
             df['url 주소'] = ''
         df['url 주소'] = df['url 주소'].fillna('')
 
-        # 가격 관련 컬럼
         df['월세_관리비_합'] = df['월세'].fillna(0) + df['관리비'].fillna(0)
         df['실질월세'] = df['월세_관리비_합'] + (df['보증금'].fillna(0) * 0.04 / 12)
 
-        # 옵션 컬럼
         option_cols = ['에어컨', '냉장고', '세탁기', '인덕션', '엘리베이터', '신발장', '옷장', '베란다', '싱크대']
         existing_option_cols = [col for col in option_cols if col in df.columns]
 
@@ -86,7 +70,6 @@ def load_data():
         else:
             df['시설점수'] = 5.0
 
-        # 가격점수
         min_p = df['실질월세'].min()
         max_p = df['실질월세'].max()
         if pd.notna(min_p) and pd.notna(max_p) and max_p != min_p:
@@ -95,7 +78,6 @@ def load_data():
         else:
             df['가격점수'] = 5.0
 
-        # 크기점수
         target_max_size = 25.0
         min_s = df['평수'].min()
         if pd.notna(min_s) and target_max_size != min_s:
@@ -104,7 +86,6 @@ def load_data():
         else:
             df['크기점수'] = 5.0
 
-        # 통학점수
         if '총_시간(분)' in df.columns:
             min_t = df['총_시간(분)'].min()
             max_t = df['총_시간(분)'].max()
@@ -128,7 +109,6 @@ df, option_cols = load_data()
 if df.empty:
     st.stop()
 
-# --- 3. 사이드바 ---
 st.sidebar.header("검색 필터")
 
 selected_types = st.sidebar.multiselect(
@@ -181,10 +161,8 @@ with st.sidebar.expander("예산 초과 패널티 설정", expanded=False):
         max_value=5.0,
         value=1.0,
         step=0.1,
-        help="예산을 초과한 금액이 최종 점수에서 얼마나 크게 차감될지 조절합니다."
     )
 
-# --- 4. 필터링 및 계산 ---
 budget_limit = max_budget * 10000
 extended_budget_limit = budget_limit * 1.2
 
@@ -207,7 +185,6 @@ for opt in selected_options:
             filtered_df[opt].astype(str).str.strip().str.upper().isin(['1', '1.0', 'O', 'ㅇ'])
         ]
 
-# 기본 점수
 total_w = w_price + w_option + w_size + w_commute
 
 if total_w > 0:
@@ -220,33 +197,19 @@ if total_w > 0:
 else:
     filtered_df['기본점수'] = 0.0
 
-# 예산 초과 패널티
 filtered_df['예산초과금액'] = (filtered_df['월세_관리비_합'] - budget_limit).clip(lower=0)
 filtered_df['예산패널티'] = (filtered_df['예산초과금액'] / 100000) * over_budget_penalty_weight
-
-# 최종 점수
 filtered_df['최종점수'] = (filtered_df['기본점수'] - filtered_df['예산패널티']).round(1)
 filtered_df['최종점수'] = filtered_df['최종점수'].clip(lower=0, upper=10)
 
-# 태그
 filtered_df['추천태그'] = np.where(
     filtered_df['예산초과금액'] > 0,
     "예산을 조금 넘지만 조건이 매우 좋아요!",
     ""
 )
 
-# 시간 표시용 컬럼
-if '총_시간(분)' in filtered_df.columns:
-    filtered_df['총_시간(분)'] = pd.to_numeric(filtered_df['총_시간(분)'], errors='coerce')
-    filtered_df['학교까지 시간'] = filtered_df['총_시간(분)'].apply(
-        lambda x: f"{int(x)}분" if pd.notna(x) else "-"
-    )
-else:
-    filtered_df['학교까지 시간'] = "-"
-
 result_df = filtered_df.sort_values('최종점수', ascending=False).reset_index(drop=True)
 
-# --- 5. 카카오맵 렌더링 함수 ---
 def render_kakao_map(data):
     if data.empty:
         center_lat, center_lng = 37.375, 126.632
@@ -260,7 +223,9 @@ def render_kakao_map(data):
         if pd.notna(row.get("추천태그", "")) and str(row.get("추천태그", "")).strip() != "":
             extra_tag = f"<br><span style='color:#ff6600;font-weight:bold;'>{row['추천태그']}</span>"
 
-        total_time_text = row.get("학교까지 시간", "-")
+        total_time_text = "-"
+        if pd.notna(row.get('총_시간(분)', np.nan)):
+            total_time_text = f"{int(row['총_시간(분)'])}분"
 
         marker_list.append({
             "title": str(row['주소']),
@@ -323,7 +288,6 @@ def render_kakao_map(data):
     """
     return components.html(map_html, height=420)
 
-# --- 이미지 Base64 인코딩 함수 ---
 def get_image_base64(image_path):
     if not os.path.exists(image_path):
         return ""
@@ -333,7 +297,6 @@ def get_image_base64(image_path):
 LOGO_FILE_PATH = "logo_transparent.png"
 logo_base64 = get_image_base64(LOGO_FILE_PATH)
 
-# --- 6. 결과 화면 출력 ---
 header_html = f"""
 <div style="
     background: linear-gradient(90deg, #1E90FF, #00BFFF);
@@ -390,7 +353,9 @@ if not result_df.empty:
                 </div>
                 """
 
-            total_time_text = row.get("학교까지 시간", "-")
+            total_time_text = "-"
+            if pd.notna(row.get('총_시간(분)', np.nan)):
+                total_time_text = f"{int(row['총_시간(분)'])}분"
 
             card_html = f"""
             <div style="
@@ -442,18 +407,23 @@ if not result_df.empty:
     st.subheader("전체 매물 분석 리스트")
 
     display_cols = [
-        '주소', '종류', '평수',
-        '학교까지 시간', '통학점수',
+        '주소', '종류', '평수', '총_시간(분)', '통학점수',
         '월세_관리비_합', '예산초과금액',
         '가격점수', '시설점수', '크기점수', 'url 주소'
     ]
     display_cols = [col for col in display_cols if col in result_df.columns]
 
+    display_df = result_df[display_cols].copy()
+    if '총_시간(분)' in display_df.columns:
+        display_df['총_시간(분)'] = display_df['총_시간(분)'].apply(
+            lambda x: f"{int(x)}분" if pd.notna(x) else "-"
+        )
+
     st.dataframe(
-        result_df[display_cols],
+        display_df,
         column_config={
             "url 주소": st.column_config.LinkColumn("링크"),
-            "학교까지 시간": "학교까지시간",
+            "총_시간(분)": "학교까지시간",
             "월세_관리비_합": st.column_config.NumberColumn("월세+관리비", format="%d"),
             "예산초과금액": st.column_config.NumberColumn("예산 초과금액", format="%d"),
             "통학점수": st.column_config.NumberColumn("통학점수", format="%.1f"),
