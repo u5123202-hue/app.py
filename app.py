@@ -5,7 +5,6 @@ import streamlit.components.v1 as components
 import json
 import os
 import base64
-import math
 
 # --- 1. 페이지 설정 ---
 st.set_page_config(page_title="ROOMINU", layout="wide")
@@ -25,7 +24,11 @@ def load_data():
         df = df.dropna(subset=existing_required_cols)
 
         # 숫자형 변환
-        numeric_cols = ['보증금', '월세', '관리비', '평수', '위도', '경도', '총_시간(분)', '버스_시간(분)', '지하철_시간(분)']
+        numeric_cols = [
+            '보증금', '월세', '관리비', '평수',
+            '위도', '경도',
+            '총_시간(분)', '버스_시간(분)', '지하철_시간(분)'
+        ]
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -35,7 +38,7 @@ def load_data():
             df['관리비'] = 0
         df['관리비'] = df['관리비'].fillna(0)
 
-        # 좌표 없으면 기본값
+        # 좌표 기본값
         if '위도' not in df.columns:
             df['위도'] = 37.375
         else:
@@ -46,22 +49,20 @@ def load_data():
         else:
             df['경도'] = df['경도'].fillna(126.632)
 
-        # 방향 없으면 빈 문자열
+        # 방향 / 종류 / URL 기본 처리
         if '향' not in df.columns:
             df['향'] = ''
         df['향'] = df['향'].fillna('')
 
-        # 종류 없으면 기타
         if '종류' not in df.columns:
             df['종류'] = '기타'
         df['종류'] = df['종류'].fillna('기타')
 
-        # URL 없으면 빈 문자열
         if 'url 주소' not in df.columns:
             df['url 주소'] = ''
         df['url 주소'] = df['url 주소'].fillna('')
 
-        # 가격 관련 파생 변수
+        # 가격 관련 컬럼
         df['월세_관리비_합'] = df['월세'].fillna(0) + df['관리비'].fillna(0)
         df['실질월세'] = df['월세_관리비_합'] + (df['보증금'].fillna(0) * 0.04 / 12)
 
@@ -87,6 +88,7 @@ def load_data():
         max_p = df['실질월세'].max()
         if pd.notna(min_p) and pd.notna(max_p) and max_p != min_p:
             df['가격점수'] = 10 - ((df['실질월세'] - min_p) / (max_p - min_p) * 10)
+            df['가격점수'] = df['가격점수'].clip(lower=0, upper=10)
         else:
             df['가격점수'] = 5.0
 
@@ -99,7 +101,7 @@ def load_data():
         else:
             df['크기점수'] = 5.0
 
-        # 통학점수: 총_시간(분) 짧을수록 높게
+        # 통학점수
         if '총_시간(분)' in df.columns:
             min_t = df['총_시간(분)'].min()
             max_t = df['총_시간(분)'].max()
@@ -147,7 +149,10 @@ with st.sidebar.expander("필수 옵션 선택", expanded=False):
             selected_options.append(opt)
 
 with st.sidebar.expander("방향 설정", expanded=False):
-    available_directions = [d for d in df['향'].dropna().unique() if str(d).strip() != '' and str(d).strip().lower() != 'nan']
+    available_directions = [
+        d for d in df['향'].dropna().unique()
+        if str(d).strip() != '' and str(d).strip().lower() != 'nan'
+    ]
     if available_directions:
         selected_directions = st.multiselect(
             "원하는 방향을 선택하세요 (여러 개 선택 가능)",
@@ -199,6 +204,7 @@ for opt in selected_options:
             filtered_df[opt].astype(str).str.strip().str.upper().isin(['1', '1.0', 'O', 'ㅇ'])
         ]
 
+# 기본 점수
 total_w = w_price + w_option + w_size + w_commute
 
 if total_w > 0:
@@ -211,19 +217,25 @@ if total_w > 0:
 else:
     filtered_df['기본점수'] = 0.0
 
-# 예산 초과 금액
+# 예산 초과 패널티
 filtered_df['예산초과금액'] = (filtered_df['월세_관리비_합'] - budget_limit).clip(lower=0)
-
-# 10만원 초과당 penalty_weight 점 차감
 filtered_df['예산패널티'] = (filtered_df['예산초과금액'] / 100000) * over_budget_penalty_weight
 
+# 최종 점수
 filtered_df['최종점수'] = (filtered_df['기본점수'] - filtered_df['예산패널티']).round(1)
 filtered_df['최종점수'] = filtered_df['최종점수'].clip(lower=0, upper=10)
 
+# 태그
 filtered_df['추천태그'] = np.where(
     filtered_df['예산초과금액'] > 0,
     "예산을 조금 넘지만 조건이 매우 좋아요!",
     ""
+)
+
+# 시간 표시용 컬럼
+filtered_df['총_시간(분)'] = pd.to_numeric(filtered_df['총_시간(분)'], errors='coerce')
+filtered_df['학교까지 시간'] = filtered_df['총_시간(분)'].apply(
+    lambda x: f"{int(x)}분" if pd.notna(x) else "-"
 )
 
 result_df = filtered_df.sort_values('최종점수', ascending=False).reset_index(drop=True)
@@ -242,9 +254,7 @@ def render_kakao_map(data):
         if pd.notna(row.get("추천태그", "")) and str(row.get("추천태그", "")).strip() != "":
             extra_tag = f"<br><span style='color:#ff6600;font-weight:bold;'>{row['추천태그']}</span>"
 
-        total_time_text = "-"
-        if pd.notna(row.get("총_시간(분)", np.nan)):
-            total_time_text = f"{int(row['총_시간(분)'])}분"
+        total_time_text = row.get("학교까지 시간", "-")
 
         marker_list.append({
             "title": str(row['주소']),
@@ -374,9 +384,7 @@ if not result_df.empty:
                 </div>
                 """
 
-            total_time_text = "-"
-            if pd.notna(row['총_시간(분)']):
-                total_time_text = f"{int(row['총_시간(분)'])}분"
+            total_time_text = row.get("학교까지 시간", "-")
 
             card_html = f"""
             <div style="
@@ -429,7 +437,7 @@ if not result_df.empty:
 
     display_cols = [
         '최종점수', '추천태그', '주소', '종류', '평수',
-        '총_시간(분)', '통학점수',
+        '학교까지 시간', '통학점수',
         '월세_관리비_합', '예산초과금액',
         '가격점수', '시설점수', '크기점수', 'url 주소'
     ]
@@ -441,7 +449,6 @@ if not result_df.empty:
             "url 주소": st.column_config.LinkColumn("링크"),
             "월세_관리비_합": st.column_config.NumberColumn("월세+관리비", format="%d"),
             "예산초과금액": st.column_config.NumberColumn("예산초과금액", format="%d"),
-            "총_시간(분)": st.column_config.NumberColumn("학교까지 총 시간(분)", format="%d"),
             "통학점수": st.column_config.NumberColumn("통학점수", format="%.1f"),
             "가격점수": st.column_config.NumberColumn("가격점수", format="%.1f"),
             "시설점수": st.column_config.NumberColumn("시설점수", format="%.1f"),
