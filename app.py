@@ -5,7 +5,9 @@ import streamlit.components.v1 as components
 import json
 import os
 import base64
+
 st.cache_data.clear()
+
 # --- 1. 페이지 설정 ---
 st.set_page_config(page_title="ROOMINU", layout="wide")
 
@@ -16,6 +18,7 @@ KAKAO_API_KEY = "853a71f8261b3dccfd8c6b6e1879d3c4"
 @st.cache_data
 def load_data():
     try:
+        # ✨ 여기 파일명이 수정되었습니다! ✨
         df = pd.read_csv('부동산 매물 정리.csv', encoding='utf-8')
         df.columns = df.columns.str.strip()
 
