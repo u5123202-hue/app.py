@@ -20,20 +20,26 @@ def load_data():
         existing_required_cols = [col for col in required_cols if col in df.columns]
         df = df.dropna(subset=existing_required_cols)
 
+        # 숫자 컬럼 처리
         numeric_cols = ['보증금', '월세', '관리비', '평수', '위도', '경도']
         for col in numeric_cols:
-        if col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
 
+        # 🔥 시간 컬럼 처리
         if '총_시간(분)' in df.columns:
-        df['총_시간(분)'] = (
-        df['총_시간(분)']
-        .astype(str)
-        .str.extract(r'(\d+)', expand=False)
-        )
-        df['총_시간(분)'] = pd.to_numeric(df['총_시간(분)'], errors='coerce')
+            df['총_시간(분)'] = (
+                df['총_시간(분)']
+                .astype(str)
+                .str.extract(r'(\d+)', expand=False)
+            )
+            df['총_시간(분)'] = pd.to_numeric(df['총_시간(분)'], errors='coerce')
 
+        return df, []
 
+    except Exception as e:
+        st.error(f"데이터 로드 에러: {e}")
+        return pd.DataFrame(), []
 
         if '관리비' not in df.columns:
             df['관리비'] = 0
