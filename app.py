@@ -5,7 +5,7 @@ import streamlit.components.v1 as components
 import json
 import os
 import base64
-
+st.cache_data.clear()
 # --- 1. 페이지 설정 ---
 st.set_page_config(page_title="ROOMINU", layout="wide")
 
