@@ -32,12 +32,7 @@ def load_data():
 
         # 시간 컬럼 처리
         if '총_시간(분)' in df.columns:
-            df['총_시간(분)'] = (
-                df['총_시간(분)']
-                .astype(str)
-                .str.extract(r'(\d+)', expand=False)
-            )
-            df['총_시간(분)'] = pd.to_numeric(df['총_시간(분)'], errors='coerce')
+             df['총_시간(분)'] = pd.to_numeric(df['총_시간(분)'], errors='coerce')
         else:
             df['총_시간(분)'] = np.nan
 
