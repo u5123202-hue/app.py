@@ -439,11 +439,14 @@ if not result_df.empty:
             if str(row['url 주소']).strip() != "":
                 st.link_button("네이버 부동산 상세보기", row['url 주소'], use_container_width=True)
 
+# --- 6. 결과 화면 출력 (마지막 부분 수정) ---
+
     st.divider()
     st.subheader("전체 매물 분석 리스트")
 
+    # display_cols에 '최종점수' 추가
     display_cols = [
-        '주소', '종류', '평수', '총_시간(분)', '통학점수',
+        '최종점수', '주소', '종류', '평수', '총_시간(분)', '통학점수',
         '월세_관리비_합', '예산초과금액',
         '가격점수', '시설점수', '크기점수', 'url 주소'
     ]
@@ -458,6 +461,7 @@ if not result_df.empty:
     st.dataframe(
         display_df,
         column_config={
+            "최종점수": st.column_config.NumberColumn("최종점수", format="%.1f"), # 점수 포맷 설정
             "url 주소": st.column_config.LinkColumn("링크"),
             "총_시간(분)": "학교까지시간",
             "월세_관리비_합": st.column_config.NumberColumn("월세+관리비", format="%d"),
@@ -470,5 +474,5 @@ if not result_df.empty:
         hide_index=True,
         use_container_width=True
     )
-else:
+    else:
     st.warning("조건에 맞는 매물이 없습니다. 옵션을 조절해 보세요.")
