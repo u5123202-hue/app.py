@@ -474,5 +474,5 @@ if not result_df.empty:
         hide_index=True,
         use_container_width=True
     )
-    else:
+else:
     st.warning("조건에 맞는 매물이 없습니다. 옵션을 조절해 보세요.")
