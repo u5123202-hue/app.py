@@ -442,7 +442,7 @@ if not result_df.empty:
 # --- 6. 결과 화면 출력 (마지막 부분 수정) ---
 
     st.divider()
-    st.subheader("전체 매물 분석 리스트")
+    st.subheader("전체 매물 리스트")
 
     # display_cols에 '최종점수' 추가
     display_cols = [
@@ -461,7 +461,7 @@ if not result_df.empty:
     st.dataframe(
         display_df,
         column_config={
-            "총점수": st.column_config.NumberColumn("최종점수", format="%.1f"), # 점수 포맷 설정
+            "최종점수": st.column_config.NumberColumn("총 점수", format="%.1f"), # 점수 포맷 설정
             "url 주소": st.column_config.LinkColumn("링크"),
             "총_시간(분)": "학교까지시간",
             "월세_관리비_합": st.column_config.NumberColumn("월세+관리비", format="%d"),
