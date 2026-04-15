@@ -18,6 +18,7 @@ KAKAO_API_KEY = "853a71f8261b3dccfd8c6b6e1879d3c4"
 @st.cache_data
 def load_data():
     try:
+        # ✨ 여기 파일명이 수정되었습니다! ✨
         df = pd.read_csv('부동산 매물 정리.csv', encoding='utf-8')
         df.columns = df.columns.str.strip()
 
@@ -65,30 +66,9 @@ def load_data():
             df['url 주소'] = ''
         df['url 주소'] = df['url 주소'].fillna('')
 
-        # --- [수정된 가격 로직 시작] ---
-        # 1. 월세 + 관리비 합계 계산
+        # 가격 관련 파생 컬럼
         df['월세_관리비_합'] = df['월세'].fillna(0) + df['관리비'].fillna(0)
-
-        # 2. 보증금 점수 계산 (낮을수록 고득점)
-        min_dep = df['보증금'].min()
-        max_dep = df['보증금'].max()
-        if pd.notna(min_dep) and pd.notna(max_dep) and max_dep != min_dep:
-            df['보증금점수'] = 10 - ((df['보증금'] - min_dep) / (max_dep - min_dep) * 10)
-        else:
-            df['보증금점수'] = 5.0
-
-        # 3. 월세+관리비 점수 계산 (낮을수록 고득점)
-        min_rent_sum = df['월세_관리비_합'].min()
-        max_rent_sum = df['월세_관리비_합'].max()
-        if pd.notna(min_rent_sum) and pd.notna(max_rent_sum) and max_rent_sum != min_rent_sum:
-            df['월세점수'] = 10 - ((df['월세_관리비_합'] - min_rent_sum) / (max_rent_sum - min_rent_sum) * 10)
-        else:
-            df['월세점수'] = 5.0
-
-        # 4. 최종 가격점수 통합 (월세 비중 70%, 보증금 비중 30%)
-        df['가격점수'] = (df['월세점수'] * 0.7) + (df['보증금점수'] * 0.3)
-        df['가격점수'] = df['가격점수'].clip(lower=0, upper=10)
-        # --- [수정된 가격 로직 끝] ---
+        df['실질월세'] = df['월세_관리비_합'] + (df['보증금'].fillna(0) * 0.04 / 12)
 
         # 옵션 컬럼
         option_cols = ['에어컨', '냉장고', '세탁기', '인덕션', '엘리베이터', '신발장', '옷장', '베란다', '싱크대']
@@ -107,6 +87,15 @@ def load_data():
             )
         else:
             df['시설점수'] = 5.0
+
+        # 가격점수
+        min_p = df['실질월세'].min()
+        max_p = df['실질월세'].max()
+        if pd.notna(min_p) and pd.notna(max_p) and max_p != min_p:
+            df['가격점수'] = 10 - ((df['실질월세'] - min_p) / (max_p - min_p) * 10)
+            df['가격점수'] = df['가격점수'].clip(lower=0, upper=10)
+        else:
+            df['가격점수'] = 5.0
 
         # 크기점수
         target_max_size = 25.0
@@ -149,8 +138,8 @@ with st.sidebar.expander("예산 및 가격 설정", expanded=False):
     max_deposit_val = int(df['보증금'].max() / 10000) if pd.notna(df['보증금'].max()) else 100
     max_deposit_val = max(max_deposit_val, 100)
 
-    max_deposit = st.sidebar.slider("최대 보증금 (만원)", 0, max_deposit_val, max_deposit_val, step=100)
-    max_budget = st.sidebar.slider("희망 월세+관리비 예산 (만원)", 0, 150, 70, step=5)
+    max_deposit = st.slider("최대 보증금 (만원)", 0, max_deposit_val, max_deposit_val, step=100)
+    max_budget = st.slider("희망 월세+관리비 예산 (만원)", 0, 150, 70, step=5)
 
 with st.sidebar.expander("필수 옵션 선택", expanded=False):
     st.write("선택한 옵션이 모두 있는 매물만 보여줍니다.")
@@ -446,7 +435,7 @@ if not result_df.empty:
 
     display_cols = [
         '주소', '종류', '평수', '총_시간(분)', '통학점수',
-        '보증금', '월세_관리비_합', '예산초과금액',
+        '월세_관리비_합', '예산초과금액',
         '가격점수', '시설점수', '크기점수', 'url 주소'
     ]
     display_cols = [col for col in display_cols if col in result_df.columns]
@@ -462,7 +451,6 @@ if not result_df.empty:
         column_config={
             "url 주소": st.column_config.LinkColumn("링크"),
             "총_시간(분)": "학교까지시간",
-            "보증금": st.column_config.NumberColumn("보증금", format="%d"),
             "월세_관리비_합": st.column_config.NumberColumn("월세+관리비", format="%d"),
             "예산초과금액": st.column_config.NumberColumn("예산 초과금액", format="%d"),
             "통학점수": st.column_config.NumberColumn("통학점수", format="%.1f"),
