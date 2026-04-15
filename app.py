@@ -461,7 +461,7 @@ if not result_df.empty:
     st.dataframe(
         display_df,
         column_config={
-            "최종점수": st.column_config.NumberColumn("최종점수", format="%.1f"), # 점수 포맷 설정
+            "총점수": st.column_config.NumberColumn("최종점수", format="%.1f"), # 점수 포맷 설정
             "url 주소": st.column_config.LinkColumn("링크"),
             "총_시간(분)": "학교까지시간",
             "월세_관리비_합": st.column_config.NumberColumn("월세+관리비", format="%d"),
