@@ -461,7 +461,7 @@ if not result_df.empty:
     
     # 지역 리스트 설정
     target_areas = ["송도", "동춘", "연수","청학","옥련",]
-    area_cols = st.columns(3)
+    area_cols = st.columns(5)
     
     for i, area in enumerate(target_areas):
         # 해당 동네 매물 필터링 후 점수 1위 추출
