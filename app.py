@@ -460,8 +460,8 @@ if not result_df.empty:
     st.subheader("🏙️ 동네별 최고의 매물 (지역별 1위)")
     
     # 지역 리스트 설정
-    target_areas = ["송도동", "동춘동", "연수동","청학동","옥련동",]
-    area_cols = st.columns(5)
+    target_areas = ["송도동", "동춘동", "연수동","청학동","옥련동","선학동"]
+    area_cols = st.columns(6)
     
     for i, area in enumerate(target_areas):
         # 해당 동네 매물 필터링 후 점수 1위 추출
