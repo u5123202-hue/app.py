@@ -103,7 +103,7 @@ def get_best_by_area(df, area_name):
 
 best_songdo = get_best_by_area(result_df, '송도')
 best_dongchun = get_best_by_area(result_df, '동춘')
-best_woninjae = get_best_by_area(result_df, '원인재')
+best_woninjae = get_best_by_area(result_df, '연수동')
 
 # --- 5. 카카오맵 & UI ---
 def render_kakao_map(data):
@@ -120,7 +120,7 @@ st.markdown("### 🏆 동네별 최고의 매물 추천")
 
 # 지역별 베스트 카드 출력
 best_cols = st.columns(3)
-areas = [("📍 송도 베스트", best_songdo), ("📍 동춘 베스트", best_dongchun), ("📍 원인재 베스트", best_woninjae)]
+areas = [("📍 송도 베스트", best_songdo), ("📍 동춘 베스트", best_dongchun), ("📍 연수동 베스트", best_woninjae)]
 
 for i, (title, b_df) in enumerate(areas):
     with best_cols[i]:
