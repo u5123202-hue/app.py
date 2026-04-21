@@ -18,7 +18,6 @@ KAKAO_API_KEY = "853a71f8261b3dccfd8c6b6e1879d3c4"
 @st.cache_data
 def load_data():
     try:
-        # ✨ 여기 파일명이 수정되었습니다! ✨
         df = pd.read_csv('부동산 매물 정리.csv', encoding='utf-8')
         df.columns = df.columns.str.strip()
 
@@ -66,7 +65,7 @@ def load_data():
             df['url 주소'] = ''
         df['url 주소'] = df['url 주소'].fillna('')
 
-        # 가격 관련 파생 컬럼 (수정: 실질월세 삭제, 월세+관리비 합산 유지)
+        # 가격 관련 파생 컬럼
         df['월세_관리비_합'] = df['월세'].fillna(0) + df['관리비'].fillna(0)
 
         # 옵션 컬럼
@@ -87,8 +86,8 @@ def load_data():
         else:
             df['시설점수'] = 5.0
 
-        # --- 가격점수 계산 로직 수정 ---
-        # 1. 월세(+관리비) 점수 산정 (낮을수록 고득점)
+        # --- 가격점수 계산 로직 ---
+        # 1. 월세(+관리비) 점수 산정
         min_rent = df['월세_관리비_합'].min()
         max_rent = df['월세_관리비_합'].max()
         if pd.notna(min_rent) and pd.notna(max_rent) and max_rent != min_rent:
@@ -96,7 +95,7 @@ def load_data():
         else:
             rent_score = 5.0
 
-        # 2. 보증금 점수 산정 (낮을수록 고득점)
+        # 2. 보증금 점수 산정
         min_dep = df['보증금'].min()
         max_dep = df['보증금'].max()
         if pd.notna(min_dep) and pd.notna(max_dep) and max_dep != min_dep:
@@ -104,7 +103,7 @@ def load_data():
         else:
             dep_score = 5.0
 
-        # 3. 종합 가격 점수 (월세 70%, 보증금 30% 비중으로 합산)
+        # 3. 종합 가격 점수 (월세 70%, 보증금 30% 비중)
         df['가격점수'] = (rent_score * 0.7) + (dep_score * 0.3)
         df['가격점수'] = df['가격점수'].clip(lower=0, upper=10)
 
@@ -146,7 +145,6 @@ selected_types = st.sidebar.multiselect(
 )
 
 with st.sidebar.expander("예산 및 가격 설정", expanded=False):
-    # 수정: 보증금 사이드바 범위를 0~1000만원으로 설정
     max_deposit = st.slider("최대 보증금 (만원)", 0, 1000, 1000, step=50)
     max_budget = st.slider("희망 월세+관리비 예산 (만원)", 0, 150, 70, step=5)
 
@@ -180,25 +178,22 @@ with st.sidebar.expander("항목별 중요도 설정", expanded=False):
     w_size = st.slider("크기 중요도", 0, 10, 5)
     w_commute = st.slider("통학 중요도", 0, 10, 5)
 
-with st.sidebar.expander("예산 초과 패널티 설정", expanded=False):
-    over_budget_penalty_weight = st.slider(
-        "예산 초과 패널티 강도",
-        min_value=0.0,
-        max_value=5.0,
-        value=1.0,
-        step=0.1,
-        help="예산을 초과한 금액이 최종 점수에서 얼마나 크게 차감될지 조절합니다."
-    )
+# ✨ 삭제 완료: '예산 초과 패널티 강도' 슬라이더를 완전히 제거했습니다! ✨
 
 # --- 4. 필터링 및 계산 ---
 budget_limit = max_budget * 10000
-extended_budget_limit = budget_limit * 1.2
+
+# ✨ 수학적 해결책 1: 숨겨진 절대 방어선 (Hidden Hard Drop)
+# 사용자가 정한 예산에서 최대 5만원까지만 뒤에서 몰래 허용해 줍니다.
+HIDDEN_FLEX_BUDGET = 50000
+extended_budget_limit = budget_limit + HIDDEN_FLEX_BUDGET
 
 filtered_df = df.copy()
 
 if selected_types:
     filtered_df = filtered_df[filtered_df['종류'].isin(selected_types)]
 
+# 5만원 방어선을 넘는 비싼 방은 여기서 칼같이 탈락시킵니다.
 filtered_df = filtered_df[
     (filtered_df['월세_관리비_합'] <= extended_budget_limit) &
     (filtered_df['보증금'] <= max_deposit * 10000)
@@ -213,7 +208,7 @@ for opt in selected_options:
             filtered_df[opt].astype(str).str.strip().str.upper().isin(['1', '1.0', 'O', 'ㅇ'])
         ]
 
-# 기본 점수
+# 기본 점수 계산 (항목 중요도 가중치 합산)
 total_w = w_price + w_option + w_size + w_commute
 
 if total_w > 0:
@@ -226,11 +221,15 @@ if total_w > 0:
 else:
     filtered_df['기본점수'] = 0.0
 
-# 예산 초과 패널티
+# ✨ 수학적 해결책 2: 가속 감점 (Exponential Penalty) 고정 공식
 filtered_df['예산초과금액'] = (filtered_df['월세_관리비_합'] - budget_limit).clip(lower=0)
-filtered_df['예산패널티'] = (filtered_df['예산초과금액'] / 100000) * over_budget_penalty_weight
+over_amount_manwon = filtered_df['예산초과금액'] / 10000
 
-# 최종 점수
+# 개발자가 고정한 엔진: 2.0 제곱을 적용하여 선을 넘을수록 점수를 무자비하게 깎습니다.
+# (1만원 초과시 -0.05점 / 3만원 초과시 -0.45점 / 5만원 초과시 -1.25점 감점)
+filtered_df['예산패널티'] = (over_amount_manwon ** 2.0) * 0.05
+
+# 최종 점수 = 기본 점수 - 패널티 감점
 filtered_df['최종점수'] = (filtered_df['기본점수'] - filtered_df['예산패널티']).round(1)
 filtered_df['최종점수'] = filtered_df['최종점수'].clip(lower=0, upper=10)
 
@@ -439,12 +438,9 @@ if not result_df.empty:
             if str(row['url 주소']).strip() != "":
                 st.link_button("네이버 부동산 상세보기", row['url 주소'], use_container_width=True)
 
-# --- 6. 결과 화면 출력 (마지막 부분 수정) ---
-
     st.divider()
     st.subheader("전체 매물 리스트")
 
-    # display_cols에 '최종점수' 추가
     display_cols = [
         '최종점수', '주소', '종류', '평수', '총_시간(분)', '통학점수',
         '월세_관리비_합', '예산초과금액',
@@ -461,7 +457,7 @@ if not result_df.empty:
     st.dataframe(
         display_df,
         column_config={
-            "최종점수": st.column_config.NumberColumn("총 점수", format="%.1f"), # 점수 포맷 설정
+            "최종점수": st.column_config.NumberColumn("총 점수", format="%.1f"),
             "url 주소": st.column_config.LinkColumn("링크"),
             "총_시간(분)": "학교까지시간",
             "월세_관리비_합": st.column_config.NumberColumn("월세+관리비", format="%d"),
