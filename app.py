@@ -160,6 +160,26 @@ for opt in option_cols:
     if key not in st.session_state:
         st.session_state[key] = False
 
+if "pending_preset" in st.session_state:
+    slot = st.session_state.pending_preset
+
+    if slot in st.session_state.presets:
+        preset = st.session_state.presets[slot]
+
+        st.session_state.selected_types = preset["selected_types"]
+        st.session_state.max_deposit = preset["max_deposit"]
+        st.session_state.max_budget = preset["max_budget"]
+        st.session_state.selected_directions = preset["selected_directions"]
+
+        st.session_state.w_price = preset["w_price"]
+        st.session_state.w_option = preset["w_option"]
+        st.session_state.w_size = preset["w_size"]
+        st.session_state.w_commute = preset["w_commute"]
+
+        for opt in option_cols:
+            st.session_state[f"chk_{opt}"] = opt in preset["selected_options"]
+
+    del st.session_state.pending_preset
 
 # --- 3. 사이드바 ---
 st.sidebar.header("검색 필터")
@@ -243,6 +263,9 @@ def apply_preset(slot):
     if slot not in st.session_state.presets:
         st.warning(f"{slot}번 프리셋이 아직 저장되지 않았습니다.")
         return
+
+    st.session_state.pending_preset = slot
+    st.rerun()
 
     preset = st.session_state.presets[slot]
 
