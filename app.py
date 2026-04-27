@@ -14,6 +14,7 @@ st.set_page_config(page_title="ROOMINU", layout="wide")
 # --- KAKAO MAP API KEY 설정 ---
 KAKAO_API_KEY = "853a71f8261b3dccfd8c6b6e1879d3c4"
 
+
 # --- 2. 데이터 로드 및 전처리 ---
 @st.cache_data
 def load_data():
@@ -21,20 +22,24 @@ def load_data():
         df = pd.read_csv('부동산 매물 정리.csv', encoding='utf-8')
         df.columns = df.columns.str.strip()
 
+        # 필수 컬럼 결측 제거
         required_cols = ['주소', '보증금', '월세', '평수']
         existing_required_cols = [col for col in required_cols if col in df.columns]
         df = df.dropna(subset=existing_required_cols)
 
+        # 일반 숫자 컬럼 처리
         numeric_cols = ['보증금', '월세', '관리비', '평수', '위도', '경도']
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
+        # 시간 컬럼 처리
         if '총_시간(분)' in df.columns:
             df['총_시간(분)'] = pd.to_numeric(df['총_시간(분)'], errors='coerce')
         else:
             df['총_시간(분)'] = np.nan
 
+        # 기본 컬럼 보정
         if '관리비' not in df.columns:
             df['관리비'] = 0
         df['관리비'] = df['관리비'].fillna(0)
@@ -61,24 +66,28 @@ def load_data():
             df['url 주소'] = ''
         df['url 주소'] = df['url 주소'].fillna('')
 
+        # 가격 관련 파생 컬럼
         df['월세_관리비_합'] = df['월세'].fillna(0) + df['관리비'].fillna(0)
 
+        # 옵션 컬럼
         option_cols = ['에어컨', '냉장고', '세탁기', '인덕션', '엘리베이터', '신발장', '옷장', '베란다', '싱크대']
         existing_option_cols = [col for col in option_cols if col in df.columns]
 
+        # 시설점수
         if len(existing_option_cols) > 0:
             df['시설점수'] = df.apply(
                 lambda row: (
-                    sum(
-                        1 for col in existing_option_cols
-                        if str(row.get(col)).strip().upper() in ['O', 'ㅇ', '1', '1.0']
-                    ) / len(existing_option_cols)
-                ) * 10,
+                                    sum(
+                                        1 for col in existing_option_cols
+                                        if str(row.get(col)).strip().upper() in ['O', 'ㅇ', '1', '1.0']
+                                    ) / len(existing_option_cols)
+                            ) * 10,
                 axis=1
             )
         else:
             df['시설점수'] = 5.0
 
+        # --- 가격점수 계산 로직 ---
         min_rent = df['월세_관리비_합'].min()
         max_rent = df['월세_관리비_합'].max()
         if pd.notna(min_rent) and pd.notna(max_rent) and max_rent != min_rent:
@@ -96,6 +105,7 @@ def load_data():
         df['가격점수'] = (rent_score * 0.7) + (dep_score * 0.3)
         df['가격점수'] = df['가격점수'].clip(lower=0, upper=10)
 
+        # 크기점수
         target_max_size = 25.0
         min_s = df['평수'].min()
         if pd.notna(min_s) and target_max_size != min_s:
@@ -104,6 +114,7 @@ def load_data():
         else:
             df['크기점수'] = 5.0
 
+        # 통학점수
         min_t = df['총_시간(분)'].min()
         max_t = df['총_시간(분)'].max()
         if pd.notna(min_t) and pd.notna(max_t) and max_t != min_t:
@@ -123,7 +134,7 @@ df, option_cols = load_data()
 if df.empty:
     st.stop()
 
-# --- 프리셋 및 기본 session_state 설정 ---
+# --- 세션 상태(Session State) 초기화 ---
 if "presets" not in st.session_state:
     st.session_state.presets = {}
 
@@ -145,13 +156,10 @@ if "selected_directions" not in st.session_state:
 
 if "w_price" not in st.session_state:
     st.session_state.w_price = 5
-
 if "w_option" not in st.session_state:
     st.session_state.w_option = 5
-
 if "w_size" not in st.session_state:
     st.session_state.w_size = 5
-
 if "w_commute" not in st.session_state:
     st.session_state.w_commute = 5
 
@@ -160,26 +168,31 @@ for opt in option_cols:
     if key not in st.session_state:
         st.session_state[key] = False
 
+# 대기 중인 프리셋 적용 처리
 if "pending_preset" in st.session_state:
     slot = st.session_state.pending_preset
-
     if slot in st.session_state.presets:
         preset = st.session_state.presets[slot]
-
         st.session_state.selected_types = preset["selected_types"]
         st.session_state.max_deposit = preset["max_deposit"]
         st.session_state.max_budget = preset["max_budget"]
         st.session_state.selected_directions = preset["selected_directions"]
-
         st.session_state.w_price = preset["w_price"]
         st.session_state.w_option = preset["w_option"]
         st.session_state.w_size = preset["w_size"]
         st.session_state.w_commute = preset["w_commute"]
-
         for opt in option_cols:
             st.session_state[f"chk_{opt}"] = opt in preset["selected_options"]
-
     del st.session_state.pending_preset
+
+
+# --- 프리셋 불러오기 함수 ---
+def apply_preset(slot):
+    if slot not in st.session_state.presets:
+        return
+    st.session_state.pending_preset = slot
+    st.rerun()
+
 
 # --- 3. 사이드바 ---
 st.sidebar.header("검색 필터")
@@ -191,24 +204,12 @@ selected_types = st.sidebar.multiselect(
 )
 
 with st.sidebar.expander("예산 및 가격 설정", expanded=False):
-    max_deposit = st.slider(
-        "최대 보증금 (만원)",
-        0, 1000,
-        step=50,
-        key="max_deposit"
-    )
-
-    max_budget = st.slider(
-        "희망 월세+관리비 예산 (만원)",
-        0, 150,
-        step=5,
-        key="max_budget"
-    )
+    max_deposit = st.slider("최대 보증금 (만원)", 0, 1000, step=50, key="max_deposit")
+    max_budget = st.slider("희망 월세+관리비 예산 (만원)", 0, 150, step=5, key="max_budget")
 
 with st.sidebar.expander("필수 옵션 선택", expanded=False):
     st.write("선택한 옵션이 모두 있는 매물만 보여줍니다.")
     selected_options = []
-
     for opt in option_cols:
         if st.checkbox(opt, key=f"chk_{opt}"):
             selected_options.append(opt)
@@ -218,7 +219,6 @@ with st.sidebar.expander("방향 설정", expanded=False):
         d for d in df['향'].dropna().unique()
         if str(d).strip() != '' and str(d).strip().lower() != 'nan'
     ]
-
     if available_directions:
         selected_directions = st.multiselect(
             "원하는 방향을 선택하세요 (여러 개 선택 가능)",
@@ -232,20 +232,23 @@ st.sidebar.divider()
 
 with st.sidebar.expander("항목별 중요도 설정", expanded=False):
     st.write("각 항목이 점수에 미치는 영향력을 조절하세요.")
-
     w_price = st.slider("가격 중요도", 0, 10, key="w_price")
     w_option = st.slider("시설 중요도", 0, 10, key="w_option")
     w_size = st.slider("크기 중요도", 0, 10, key="w_size")
     w_commute = st.slider("통학 중요도", 0, 10, key="w_commute")
 
-# --- 프리셋 저장 기능 ---
 st.sidebar.divider()
-st.sidebar.subheader("📌 프리셋 저장")
+st.sidebar.subheader("📌 맞춤 필터 저장 및 불러오기")
 
-preset_slot = st.sidebar.selectbox("저장할 프리셋 번호", ["1", "2", "3"])
+# 1. 원하는 이름으로 저장하기
+preset_name_input = st.sidebar.text_input("새 필터 저장 이름 (선택)", placeholder="예: 내 취향 옵션")
+if st.sidebar.button("현재 설정 저장", use_container_width=True):
+    preset_name = preset_name_input.strip()
+    if not preset_name:
+        preset_num = len(st.session_state.presets) + 1
+        preset_name = f"내 필터 {preset_num}"
 
-if st.sidebar.button("현재 설정 저장"):
-    st.session_state.presets[preset_slot] = {
+    st.session_state.presets[preset_name] = {
         "selected_types": selected_types,
         "max_deposit": max_deposit,
         "max_budget": max_budget,
@@ -256,37 +259,48 @@ if st.sidebar.button("현재 설정 저장"):
         "w_size": w_size,
         "w_commute": w_commute
     }
-    st.sidebar.success(f"{preset_slot}번 프리셋 저장 완료!")
-
-
-def apply_preset(slot):
-    if slot not in st.session_state.presets:
-        st.warning(f"{slot}번 프리셋이 아직 저장되지 않았습니다.")
-        return
-
-    st.session_state.pending_preset = slot
+    st.sidebar.success(f"'{preset_name}' 저장 완료!")
     st.rerun()
 
-    preset = st.session_state.presets[slot]
+# ✨ 2. 밑줄 텍스트 링크 스타일의 '삭제' 기능
+if st.session_state.presets:
+    # 텍스트 링크 버튼을 위한 커스텀 CSS 주입
+    st.markdown("""
+        <style>
+        button[kind="tertiary"] {
+            text-decoration: underline !important;
+            font-size: 13px !important;
+            color: #888888 !important;
+            padding-top: 5px !important;
+            background: none !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        button[kind="tertiary"]:hover {
+            color: #ff4b4b !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
-    st.session_state.selected_types = preset["selected_types"]
-    st.session_state.max_deposit = preset["max_deposit"]
-    st.session_state.max_budget = preset["max_budget"]
-    st.session_state.selected_directions = preset["selected_directions"]
+    with st.sidebar.expander("저장된 필터 목록 열기", expanded=False):
+        for preset_name in list(st.session_state.presets.keys()):
+            # 4:1 비율로 분할하여 적용 버튼과 삭제 텍스트 링크 배치
+            col1, col2 = st.columns([4, 1])
 
-    st.session_state.w_price = preset["w_price"]
-    st.session_state.w_option = preset["w_option"]
-    st.session_state.w_size = preset["w_size"]
-    st.session_state.w_commute = preset["w_commute"]
+            with col1:
+                if st.button(f"{preset_name} 적용", key=f"apply_{preset_name}", use_container_width=True):
+                    apply_preset(preset_name)
 
-    for opt in option_cols:
-        st.session_state[f"chk_{opt}"] = opt in preset["selected_options"]
-
-    st.rerun()
-
+            with col2:
+                # type="tertiary"를 사용하여 깔끔한 텍스트 링크로 만듭니다.
+                if st.button("삭제", key=f"del_{preset_name}", type="tertiary", help="이 필터를 삭제합니다."):
+                    del st.session_state.presets[preset_name]
+                    st.rerun()
 
 # --- 4. 필터링 및 계산 ---
 budget_limit = max_budget * 10000
+
+# 숨겨진 5만원 방어선 (Hard Drop 기준)
 HIDDEN_FLEX_BUDGET = 50000
 extended_budget_limit = budget_limit + HIDDEN_FLEX_BUDGET
 
@@ -295,10 +309,11 @@ filtered_df = df.copy()
 if selected_types:
     filtered_df = filtered_df[filtered_df['종류'].isin(selected_types)]
 
+# 5만원 이상 초과하는 매물은 원천 차단
 filtered_df = filtered_df[
     (filtered_df['월세_관리비_합'] <= extended_budget_limit) &
     (filtered_df['보증금'] <= max_deposit * 10000)
-].copy()
+    ].copy()
 
 if selected_directions:
     filtered_df = filtered_df[filtered_df['향'].isin(selected_directions)].copy()
@@ -309,18 +324,19 @@ for opt in selected_options:
             filtered_df[opt].astype(str).str.strip().str.upper().isin(['1', '1.0', 'O', 'ㅇ'])
         ]
 
+# 기본 점수 산출
 total_w = w_price + w_option + w_size + w_commute
-
 if total_w > 0:
     filtered_df['기본점수'] = (
-        (filtered_df['가격점수'] * (w_price / total_w)) +
-        (filtered_df['시설점수'] * (w_option / total_w)) +
-        (filtered_df['크기점수'] * (w_size / total_w)) +
-        (filtered_df['통학점수'] * (w_commute / total_w))
+            (filtered_df['가격점수'] * (w_price / total_w)) +
+            (filtered_df['시설점수'] * (w_option / total_w)) +
+            (filtered_df['크기점수'] * (w_size / total_w)) +
+            (filtered_df['통학점수'] * (w_commute / total_w))
     )
 else:
     filtered_df['기본점수'] = 0.0
 
+# 예산 초과 고정 가속 감점 (2.0 제곱 * 0.05)
 filtered_df['예산초과금액'] = (filtered_df['월세_관리비_합'] - budget_limit).clip(lower=0)
 over_amount_manwon = filtered_df['예산초과금액'] / 10000
 filtered_df['예산패널티'] = (over_amount_manwon ** 2.0) * 0.05
@@ -346,7 +362,6 @@ def render_kakao_map(data):
         center_lng = data['경도'].mean()
 
     marker_list = []
-
     for _, row in data.iterrows():
         extra_tag = ""
         if pd.notna(row.get("추천태그", "")) and str(row.get("추천태그", "")).strip() != "":
@@ -415,7 +430,6 @@ def render_kakao_map(data):
         }})();
     </script>
     """
-
     return components.html(map_html, height=420)
 
 
@@ -423,14 +437,12 @@ def render_kakao_map(data):
 def get_image_base64(image_path):
     if not os.path.exists(image_path):
         return ""
-
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
 
 
 LOGO_FILE_PATH = "logo_transparent.png"
 logo_base64 = get_image_base64(LOGO_FILE_PATH)
-
 
 # --- 6. 결과 화면 출력 ---
 header_html = f"""
@@ -456,7 +468,6 @@ header_html = f"""
     {"" if logo_base64 == "" else f'<img src="data:image/png;base64,{logo_base64}" style="max-height: 120px; width: auto;"/>'}
 </div>
 """
-
 st.markdown(header_html, unsafe_allow_html=True)
 
 if not result_df.empty:
@@ -465,23 +476,7 @@ if not result_df.empty:
 
     st.divider()
 
-    # --- TOP 3 제목 + 프리셋 불러오기 버튼 ---
-    col_title, col_p1, col_p2, col_p3 = st.columns([7, 1, 1, 1])
-
-    with col_title:
-        st.subheader("맞춤형 추천 매물 TOP 3")
-
-    with col_p1:
-        if st.button("1", use_container_width=True):
-            apply_preset("1")
-
-    with col_p2:
-        if st.button("2", use_container_width=True):
-            apply_preset("2")
-
-    with col_p3:
-        if st.button("3", use_container_width=True):
-            apply_preset("3")
+    st.subheader("맞춤형 추천 매물 TOP 3")
 
     top_cols = st.columns(3)
 
@@ -568,7 +563,6 @@ if not result_df.empty:
     ]
 
     display_cols = [col for col in display_cols if col in result_df.columns]
-
     display_df = result_df[display_cols].copy()
 
     if '총_시간(분)' in display_df.columns:
@@ -594,7 +588,7 @@ if not result_df.empty:
     )
 
     st.divider()
-    st.subheader("🏙️ 동네별 최고의 매물 (지역별 1위)")
+    st.subheader("동네별 최고의 매물 (지역별 1위)")
 
     target_areas = ["송도동", "동춘동", "연수동", "청학동", "옥련동", "선학동"]
     area_cols = st.columns(6)
@@ -626,7 +620,7 @@ if not result_df.empty:
                         {b_row['주소']}
                     </div>
                     <div style="font-size: 13px; color: #666; line-height: 1.6;">
-                        가격: <b>{int(b_row['보증금']/10000)}/{int(b_row['월세']/10000)}</b><br>
+                        가격: <b>{int(b_row['보증금'] / 10000)}/{int(b_row['월세'] / 10000)}</b><br>
                         시간: <b>{total_time_b}</b> | 크기: <b>{b_row['평수']}평</b>
                     </div>
                 </div>
