@@ -658,64 +658,85 @@ if not result_df.empty:
         hide_index=True,
         use_container_width=True
     )
-
     st.divider()
-    st.subheader("동네별 최고의 매물 (지역별 1위)")
+st.subheader("동네별 최고의 매물 (지역별 1위)")
 
-    target_areas = ["송도동", "동춘동", "연수동", "청학동", "옥련동", "선학동"]
-    area_cols = st.columns(6)
+target_areas = ["송도동", "동춘동", "연수동", "청학동", "옥련동", "선학동"]
+area_cols = st.columns(6)
 
-    for i, area in enumerate(target_areas):
-        area_best = result_df[result_df['주소'].str.contains(area, na=False)].head(1)
+for i, area in enumerate(target_areas):
+    area_best = result_df[result_df['주소'].str.contains(area, na=False)].head(1)
 
-        with area_cols[i]:
-            if not area_best.empty:
-                b_row = area_best.iloc[0]
-                total_time_b = f"{int(b_row['총_시간(분)'])}분" if pd.notna(b_row.get('총_시간(분)')) else "-"
+    with area_cols[i]:
+        if not area_best.empty:
+            b_row = area_best.iloc[0]
+            total_time_b = f"{int(b_row['총_시간(분)'])}분" if pd.notna(b_row.get('총_시간(분)')) else "-"
 
-                area_card_html = f"""
+            area_card_html = f"""
+            <div style="
+                background-color:#f8f9fa;
+                border:2px solid #1E90FF;
+                border-radius:12px;
+                padding:15px;
+                text-align:center;
+                box-shadow:0 2px 4px rgba(0,0,0,0.1);
+                height:250px;
+                box-sizing:border-box;
+                overflow:hidden;
+                font-family:Arial, sans-serif;
+            ">
                 <div style="
-                    background-color: #f8f9fa;
-                    border: 2px solid #1E90FF;
-                    border-radius: 12px;
-                    padding: 15px;
-                    text-align: center;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    background-color:#1E90FF;
+                    color:white;
+                    border-radius:20px;
+                    padding:6px 12px;
+                    display:inline-block;
+                    font-size:14px;
+                    font-weight:bold;
+                    margin-bottom:12px;
                 ">
-                    <div style="
-                        background-color: #1E90FF;
-                        color: white;
-                        border-radius: 20px;
-                        padding: 5px 15px;
-                        display: inline-block;
-                        font-size: 14px;
-                        font-weight: bold;
-                        margin-bottom: 10px;
-                    ">
-                        {area} 지역 1위
-                    </div>
-
-                    <div style="font-size: 24px; font-weight: 800; color: #1E90FF; margin-bottom: 5px;">
-                        {b_row['최종점수']}점
-                    </div>
-
-                    <div style="font-size: 14px; color: #333; margin-bottom: 10px; height: 40px; overflow: hidden;">
-                        {b_row['주소']}
-                    </div>
-
-                    <div style="font-size: 13px; color: #666; line-height: 1.6;">
-                        가격: <b>{int(b_row['보증금'] / 10000)}/{int(b_row['월세'] / 10000)}</b><br>
-                        시간: <b>{total_time_b}</b> | 크기: <b>{b_row['평수']}평</b>
-                    </div>
+                    {area} 지역 1위
                 </div>
-                """
 
-                st.markdown(area_card_html, unsafe_allow_html=True)
+                <div style="
+                    font-size:24px;
+                    font-weight:800;
+                    color:#1E90FF;
+                    margin-bottom:8px;
+                ">
+                    {b_row['최종점수']}점
+                </div>
 
-                if str(b_row['url 주소']).strip() != "":
-                    st.link_button(f"{area} 매물 상세보기", b_row['url 주소'], use_container_width=True)
-            else:
-                st.info(f"{area} 지역 조건 만족 매물 없음")
+                <div style="
+                    font-size:13px;
+                    color:#333;
+                    margin-bottom:12px;
+                    height:42px;
+                    overflow:hidden;
+                    line-height:1.4;
+                ">
+                    {b_row['주소']}
+                </div>
 
-else:
-    st.warning("조건에 맞는 매물이 없습니다. 옵션을 조절해 보세요.")
+                <div style="
+                    font-size:13px;
+                    color:#666;
+                    line-height:1.7;
+                ">
+                    가격: <b>{int(b_row['보증금'] / 10000)}/{int(b_row['월세'] / 10000)}</b><br>
+                    시간: <b>{total_time_b}</b><br>
+                    크기: <b>{b_row['평수']}평</b>
+                </div>
+            </div>
+            """
+
+            components.html(area_card_html, height=270)
+
+            if str(b_row['url 주소']).strip() != "":
+                st.link_button(
+                    f"{area} 매물 상세보기",
+                    b_row['url 주소'],
+                    use_container_width=True
+                )
+        else:
+            st.info(f"{area} 지역 조건 만족 매물 없음")
