@@ -405,7 +405,7 @@ def render_kakao_map(data):
         <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
     </head>
 
-    <div id="map" style="width:100%;height:320px;border-radius:10px;background-color:#eee;"></div>
+    <div id="map" style="width:100%;height:500px;border-radius:10px;background-color:#eee;"></div>
 
     <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_API_KEY}&libraries=services,clusterer&autoload=false"></script>
 
@@ -462,7 +462,7 @@ def render_kakao_map(data):
     </script>
     """
 
-    return components.html(map_html, height=340)
+    return components.html(map_html, height=520)
 
 
 def get_image_base64(image_path):
