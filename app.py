@@ -540,13 +540,6 @@ if not result_df.empty:
             st.session_state.w_commute
         )
 
-        st.caption(
-            f"현재 가중치 비율 | "
-            f"가격 {st.session_state.w_price / total_weight_now:.0%} · "
-            f"시설 {st.session_state.w_option / total_weight_now:.0%} · "
-            f"크기 {st.session_state.w_size / total_weight_now:.0%} · "
-            f"통학 {st.session_state.w_commute / total_weight_now:.0%}"
-        )
 
     st.divider()
     st.subheader("맞춤형 추천 매물 TOP 3")
