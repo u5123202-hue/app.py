@@ -196,7 +196,7 @@ def apply_preset(slot):
 
 
 # --- 경제성 비교 계산 함수 ---
-def calculate_total_cost(row, months=12, annual_interest_rate=0.03, hourly_value=5000, commute_days_per_month=20):
+def calculate_total_cost(row, months=12, commute_days_per_month=20):
     deposit = row.get('보증금', 0)
     monthly_rent = row.get('월세', 0)
     maintenance = row.get('관리비', 0)
@@ -212,7 +212,7 @@ def calculate_total_cost(row, months=12, annual_interest_rate=0.03, hourly_value
         commute_min = 0
 
     # 보증금 기회비용 = 보증금을 다른 곳에 투자했을 때 포기하는 이자수익
-    deposit_opportunity_cost = deposit * annual_interest_rate * (months / 12)
+    deposit_opportunity_cost = deposit * (months / 12)
 
     # 고정 지출 = 월세 및 관리비 총액
     rent_total = monthly_rent * months
@@ -220,7 +220,7 @@ def calculate_total_cost(row, months=12, annual_interest_rate=0.03, hourly_value
 
     # 통학시간 비용 = 총 통학시간 x 시간가치
     commute_hours_total = (commute_min / 60) * commute_days_per_month * months
-    commute_cost = commute_hours_total * hourly_value
+    commute_cost = commute_hours_total * 5160
 
     total_cost = deposit_opportunity_cost + rent_total + maintenance_total + commute_cost
 
@@ -683,18 +683,12 @@ if not result_df.empty:
     """, unsafe_allow_html=True)
 
     with st.expander("비교 조건 설정", expanded=False):
-        col_a, col_b, col_c, col_d = st.columns(4)
+        col_a, col_b = st.columns(2)
 
         with col_a:
             compare_months = st.number_input("희망 거주기간(개월)", min_value=1, max_value=60, value=12)
 
         with col_b:
-            annual_interest_rate = st.number_input("연 이자율(%)", min_value=0.0, max_value=20.0, value=3.0, step=0.1) / 100
-
-        with col_c:
-            hourly_value = st.number_input("시간가치(원/시간)", min_value=0, max_value=30000, value=5000, step=500)
-
-        with col_d:
             commute_days = st.number_input("월 통학일수", min_value=1, max_value=31, value=20)
 
     display_cols = [
@@ -753,16 +747,12 @@ if not result_df.empty:
             cost_a = calculate_total_cost(
                 row_a,
                 months=compare_months,
-                annual_interest_rate=annual_interest_rate,
-                hourly_value=hourly_value,
                 commute_days_per_month=commute_days
             )
 
             cost_b = calculate_total_cost(
                 row_b,
                 months=compare_months,
-                annual_interest_rate=annual_interest_rate,
-                hourly_value=hourly_value,
                 commute_days_per_month=commute_days
             )
 
