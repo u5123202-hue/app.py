@@ -142,7 +142,7 @@ if "desired_size" not in st.session_state:
     st.session_state.desired_size = 20
 
 if "size_any" not in st.session_state:
-    st.session_state.size_any = False
+    st.session_state.size_any = True
 
 if "selected_directions" not in st.session_state:
     available_directions_init = [
