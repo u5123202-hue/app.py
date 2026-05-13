@@ -845,23 +845,7 @@ if not result_df.empty:
                 f"'{loser_row['주소']}' 매물보다 경제성이 더 높습니다."
             )
 
-            chart_df = pd.DataFrame({
-                "비용항목": ["보증금 기회비용", "월세 총액", "관리비 총액", "통학시간 비용"],
-                "매물 A": [
-                    cost_a["보증금 기회비용"],
-                    cost_a["월세 총액"],
-                    cost_a["관리비 총액"],
-                    cost_a["통학시간 비용"]
-                ],
-                "매물 B": [
-                    cost_b["보증금 기회비용"],
-                    cost_b["월세 총액"],
-                    cost_b["관리비 총액"],
-                    cost_b["통학시간 비용"]
-                ]
-            }).set_index("비용항목")
 
-            st.bar_chart(chart_df)
 
             link_col1, link_col2 = st.columns(2)
             with link_col1:
