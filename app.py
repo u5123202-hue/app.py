@@ -195,52 +195,6 @@ def apply_preset(slot):
     st.rerun()
 
 
-# --- 경제성 비교 계산 함수 ---
-def calculate_total_cost(row, months=12, annual_interest_rate=0.03, hourly_value=5000, commute_days_per_month=20):
-    deposit = row.get('보증금', 0)
-    monthly_rent = row.get('월세', 0)
-    maintenance = row.get('관리비', 0)
-    commute_min = row.get('총_시간(분)', 0)
-
-    if pd.isna(deposit):
-        deposit = 0
-    if pd.isna(monthly_rent):
-        monthly_rent = 0
-    if pd.isna(maintenance):
-        maintenance = 0
-    if pd.isna(commute_min):
-        commute_min = 0
-
-    # 보증금 기회비용 = 보증금을 다른 곳에 투자했을 때 포기하는 이자수익
-    deposit_opportunity_cost = deposit * annual_interest_rate * (months / 12)
-
-    # 고정 지출 = 월세 및 관리비 총액
-    rent_total = monthly_rent * months
-    maintenance_total = maintenance * months
-
-    # 통학시간 비용 = 총 통학시간 x 시간가치
-    commute_hours_total = (commute_min / 60) * commute_days_per_month * months
-    commute_cost = commute_hours_total * hourly_value
-
-    total_cost = deposit_opportunity_cost + rent_total + maintenance_total + commute_cost
-
-    return {
-        "보증금 기회비용": deposit_opportunity_cost,
-        "월세 총액": rent_total,
-        "관리비 총액": maintenance_total,
-        "통학시간 비용": commute_cost,
-        "총비용": total_cost
-    }
-
-
-def format_won(value):
-    return f"{int(value):,}원"
-
-
-def format_manwon(value):
-    return f"{int(value / 10000):,}만원"
-
-
 # --- 3. 사이드바 ---
 st.sidebar.header("검색 필터")
 
@@ -586,6 +540,7 @@ if not result_df.empty:
             st.session_state.w_commute
         )
 
+
     st.divider()
     st.subheader("맞춤형 추천 매물 TOP 3")
 
@@ -663,209 +618,6 @@ if not result_df.empty:
             if str(row['url 주소']).strip() != "":
                 st.link_button("네이버 부동산 상세보기", row['url 주소'], use_container_width=True)
 
-    # --- 7. 1vs1 매물 경제성 비교 기능 ---
-    st.divider()
-    st.subheader("1vs1 매물 경제성 비교")
-
-    st.markdown("""
-    <div style="
-        background-color:#F8F9FA;
-        border:1px solid #E6E6E6;
-        border-radius:12px;
-        padding:16px;
-        margin-bottom:12px;
-    ">
-        <h4 style="margin-top:0; margin-bottom:8px;">Total Cost 기반 비교</h4>
-        <p style="font-size:13px; color:#666; margin-bottom:0;">
-            두 매물을 선택하면 보증금의 기회비용, 월세, 관리비, 통학시간 비용을 합산해 실질 총비용을 비교합니다.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    with st.expander("비교 조건 설정", expanded=False):
-        col_a, col_b, col_c, col_d = st.columns(4)
-
-        with col_a:
-            compare_months = st.number_input("희망 거주기간(개월)", min_value=1, max_value=60, value=12)
-
-        with col_b:
-            annual_interest_rate = st.number_input("연 이자율(%)", min_value=0.0, max_value=20.0, value=3.0, step=0.1) / 100
-
-        with col_c:
-            hourly_value = st.number_input("시간가치(원/시간)", min_value=0, max_value=30000, value=5000, step=500)
-
-        with col_d:
-            commute_days = st.number_input("월 통학일수", min_value=1, max_value=31, value=20)
-
-    if len(result_df) >= 2:
-        compare_df = result_df.copy()
-        compare_df["선택표시"] = compare_df.apply(
-            lambda r: f"{r.name + 1}. {r['주소']} | {int(r['보증금']/10000)}/{int(r['월세']/10000)}만 | {r['평수']}평",
-            axis=1
-        )
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            selected_a = st.selectbox(
-                "매물 A 선택",
-                options=compare_df.index,
-                format_func=lambda x: compare_df.loc[x, "선택표시"],
-                key="compare_a"
-            )
-
-        with col2:
-            selected_b = st.selectbox(
-                "매물 B 선택",
-                options=compare_df.index,
-                format_func=lambda x: compare_df.loc[x, "선택표시"],
-                key="compare_b"
-            )
-
-        if st.button("비교하기", use_container_width=True):
-            if selected_a == selected_b:
-                st.warning("서로 다른 두 개의 매물을 선택해주세요.")
-            else:
-                row_a = compare_df.loc[selected_a]
-                row_b = compare_df.loc[selected_b]
-
-                cost_a = calculate_total_cost(
-                    row_a,
-                    months=compare_months,
-                    annual_interest_rate=annual_interest_rate,
-                    hourly_value=hourly_value,
-                    commute_days_per_month=commute_days
-                )
-
-                cost_b = calculate_total_cost(
-                    row_b,
-                    months=compare_months,
-                    annual_interest_rate=annual_interest_rate,
-                    hourly_value=hourly_value,
-                    commute_days_per_month=commute_days
-                )
-
-                if cost_a["총비용"] < cost_b["총비용"]:
-                    winner = "A"
-                    loser = "B"
-                    winner_cost = cost_a["총비용"]
-                    loser_cost = cost_b["총비용"]
-                else:
-                    winner = "B"
-                    loser = "A"
-                    winner_cost = cost_b["총비용"]
-                    loser_cost = cost_a["총비용"]
-
-                diff = abs(cost_a["총비용"] - cost_b["총비용"])
-                diff_rate = diff / max(cost_a["총비용"], cost_b["총비용"]) * 100 if max(cost_a["총비용"], cost_b["총비용"]) > 0 else 0
-
-                st.markdown("""
-                <div style="
-                    background-color:#F8F9FA;
-                    border:2px solid #1E90FF;
-                    border-radius:16px;
-                    padding:22px;
-                    margin-top:15px;
-                    margin-bottom:20px;
-                    box-shadow:0 4px 8px rgba(0,0,0,0.08);
-                ">
-                    <h3 style="margin-top:0; color:#1E90FF;">1vs1 경제성 비교 결과</h3>
-                    <p style="color:#555; margin-bottom:0;">
-                        보증금 기회비용, 월세, 관리비, 통학시간 비용을 모두 반영한 실질 총비용 비교입니다.
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
-
-                summary_col1, summary_col2, summary_col3 = st.columns(3)
-                with summary_col1:
-                    st.metric("매물 A 총비용", format_won(cost_a["총비용"]))
-                with summary_col2:
-                    st.metric("매물 B 총비용", format_won(cost_b["총비용"]))
-                with summary_col3:
-                    st.metric("총비용 차이", format_won(diff), f"{diff_rate:.1f}%")
-
-                result_compare = pd.DataFrame({
-                    "항목": [
-                        "주소", "평수", "보증금", "월세", "관리비", "통학시간",
-                        "보증금 기회비용", "월세 총액", "관리비 총액", "통학시간 비용", "총비용"
-                    ],
-                    "매물 A": [
-                        row_a["주소"],
-                        f"{row_a['평수']}평",
-                        format_won(row_a["보증금"]),
-                        format_won(row_a["월세"]),
-                        format_won(row_a["관리비"]),
-                        f"{int(row_a['총_시간(분)'])}분" if pd.notna(row_a["총_시간(분)"]) else "-",
-                        format_won(cost_a["보증금 기회비용"]),
-                        format_won(cost_a["월세 총액"]),
-                        format_won(cost_a["관리비 총액"]),
-                        format_won(cost_a["통학시간 비용"]),
-                        format_won(cost_a["총비용"])
-                    ],
-                    "매물 B": [
-                        row_b["주소"],
-                        f"{row_b['평수']}평",
-                        format_won(row_b["보증금"]),
-                        format_won(row_b["월세"]),
-                        format_won(row_b["관리비"]),
-                        f"{int(row_b['총_시간(분)'])}분" if pd.notna(row_b["총_시간(분)"]) else "-",
-                        format_won(cost_b["보증금 기회비용"]),
-                        format_won(cost_b["월세 총액"]),
-                        format_won(cost_b["관리비 총액"]),
-                        format_won(cost_b["통학시간 비용"]),
-                        format_won(cost_b["총비용"])
-                    ]
-                })
-
-                st.dataframe(result_compare, hide_index=True, use_container_width=True)
-
-                if winner == "A":
-                    winner_row = row_a
-                    loser_row = row_b
-                else:
-                    winner_row = row_b
-                    loser_row = row_a
-
-                st.success(
-                    f"추천 결과: 매물 {winner}가 더 경제적입니다. "
-                    f"매물 {loser}보다 실질 총비용이 약 {format_won(diff)} 낮고, "
-                    f"비율로는 약 {diff_rate:.1f}% 차이입니다."
-                )
-
-                st.info(
-                    f"해석: '{winner_row['주소']}' 매물은 월세, 보증금 기회비용, 관리비, 통학시간 비용을 모두 합산했을 때 "
-                    f"'{loser_row['주소']}' 매물보다 경제성이 더 높습니다."
-                )
-
-                chart_df = pd.DataFrame({
-                    "비용항목": ["보증금 기회비용", "월세 총액", "관리비 총액", "통학시간 비용"],
-                    "매물 A": [
-                        cost_a["보증금 기회비용"],
-                        cost_a["월세 총액"],
-                        cost_a["관리비 총액"],
-                        cost_a["통학시간 비용"]
-                    ],
-                    "매물 B": [
-                        cost_b["보증금 기회비용"],
-                        cost_b["월세 총액"],
-                        cost_b["관리비 총액"],
-                        cost_b["통학시간 비용"]
-                    ]
-                }).set_index("비용항목")
-
-                st.bar_chart(chart_df)
-
-                link_col1, link_col2 = st.columns(2)
-                with link_col1:
-                    if str(row_a['url 주소']).strip() != "":
-                        st.link_button("매물 A 상세보기", row_a['url 주소'], use_container_width=True)
-                with link_col2:
-                    if str(row_b['url 주소']).strip() != "":
-                        st.link_button("매물 B 상세보기", row_b['url 주소'], use_container_width=True)
-
-    else:
-        st.info("비교하려면 최소 2개 이상의 매물이 필요합니다.")
-
     st.divider()
     st.subheader("전체 매물 리스트")
 
@@ -900,19 +652,13 @@ if not result_df.empty:
         use_container_width=True
     )
     st.divider()
-
-else:
-    st.warning("조건에 맞는 매물이 없습니다. 필터 조건을 완화해보세요.")
-
-
-# --- 8. 동네별 최고의 매물 ---
 st.subheader("동네별 최고의 매물 (지역별 1위)")
 
 target_areas = ["송도동", "동춘동", "연수동", "청학동", "옥련동", "선학동"]
 area_cols = st.columns(6)
 
 for i, area in enumerate(target_areas):
-    area_best = result_df[result_df['주소'].str.contains(area, na=False)].head(1) if not result_df.empty else pd.DataFrame()
+    area_best = result_df[result_df['주소'].str.contains(area, na=False)].head(1)
 
     with area_cols[i]:
         if not area_best.empty:
