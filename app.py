@@ -258,7 +258,7 @@ with st.sidebar.expander("희망 평수 설정", expanded=False):
     size_any = st.checkbox("평수 상관없음", key="size_any")
     desired_size = st.slider(
         "희망 평수 (구간 선택)",
-        0, 30, step=5,
+        0, 30, step=1,
         key="desired_size",
         disabled=size_any,
         help="""선택한 값을 기준으로 ±5평 범위를 추천합니다.
