@@ -258,10 +258,16 @@ with st.sidebar.expander("희망 평수 설정", expanded=False):
     size_any = st.checkbox("평수 상관없음", key="size_any")
     desired_size = st.slider(
         "희망 평수 (구간 선택)",
-        10, 50, step=10,
+        0, 30, step=5,
         key="desired_size",
         disabled=size_any,
-        help="10: 10평 이하, 50: 50평 이상, 그 외: 해당 평수 구간"
+        help="""선택한 값을 기준으로 ±5평 범위를 추천합니다.
+    
+    예시:
+    - 5 → 0~10평
+    - 10 → 5~15평
+    - 15 → 10~20평
+    """
     )
 
 with st.sidebar.expander("필수 옵션 선택", expanded=False):
@@ -359,15 +365,13 @@ filtered_df = filtered_df[
 ]
 
 if not size_any:
-    if desired_size == 10:
-        filtered_df = filtered_df[filtered_df['평수'] <= 10]
-    elif desired_size == 50:
-        filtered_df = filtered_df[filtered_df['평수'] >= 50]
-    else:
-        filtered_df = filtered_df[
-            (filtered_df['평수'] > desired_size - 10) &
-            (filtered_df['평수'] <= desired_size)
-        ]
+    min_size = max(0, desired_size - 5)
+    max_size = desired_size + 5
+
+    filtered_df = filtered_df[
+        (filtered_df['평수'] >= min_size) &
+        (filtered_df['평수'] <= max_size)
+    ]
 
 if selected_directions:
     filtered_df = filtered_df[filtered_df['향'].isin(selected_directions)]
