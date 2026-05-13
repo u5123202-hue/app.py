@@ -478,7 +478,9 @@ def render_kakao_map(data):
                         var clusterer = new kakao.maps.MarkerClusterer({{
                             map: map,
                             averageCenter: true,
-                            minLevel: 4
+                            minLevel: 2,
+                            gridSize: 35,
+                            disableClickZoom: false
                         }});
 
                         var positions = {markers_json};
